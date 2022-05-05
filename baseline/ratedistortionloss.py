@@ -9,6 +9,7 @@ Minnen, David, Johannes Ballé, and George D. Toderici.
 
 import torch
 import torch.nn as nn
+import math
 
 class RateDistortionLoss(nn.Module):
     """Custom rate distortion loss with a Lagrangian parameter."""

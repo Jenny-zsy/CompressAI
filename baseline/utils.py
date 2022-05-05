@@ -1,9 +1,9 @@
 from PIL import Image
 import torchvision
 import torch
-from model import Model
+#from model import Model
 
-
+'''
 def run_on_image(model_path, image_path, device):
 	"""
 	Run the pretrained model stored at model_path on an image
@@ -38,7 +38,7 @@ def concat_images(image1, image2):
 	result_image.paste(image1, (0, 0))
 	result_image.paste(image2, (image1.width, 0))
 	return result_image
-
+'''
 
 class AverageMeter(object):
 	"""Stores current value of statistics and computes average"""
