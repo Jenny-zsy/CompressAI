@@ -12,9 +12,9 @@ import torch
 from torch import nn
 import numpy as np
 
-from gdn import GDN
-from masked_conv import MaskedConv2d
-from entropy import EntropyBottleneck, GaussianConditional
+from models.gdn import GDN
+from models.masked_conv import MaskedConv2d
+from models.entropy import EntropyBottleneck, GaussianConditional
 
 
 class Model(nn.Module):
@@ -347,7 +347,6 @@ class ContextHyperprior(nn.Module):
 		indexes_list = []
 
         # Warning, this is slow...
-        # TODO: profile the calls to the bindings...
 		masked_weight = self.context_prediction.weight * self.context_prediction.mask
 		for h in range(height):
 			for w in range(width):

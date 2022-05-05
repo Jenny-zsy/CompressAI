@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from torch import Tensor
 
 #from _CXX import pmf_to_quantized_cdf as _pmf_to_quantized_cdf
-from bound_ops import LowerBound
+from models.bound_ops import LowerBound
 
 
 '''def default_entropy_coder():
