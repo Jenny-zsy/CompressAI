@@ -20,7 +20,7 @@ from utils import AverageMeter
 from dataset import CLIC_dataset
 
 
-def train_epoch(args, model, criterion, optimiser, train_dataloader, epoch, epochs,
+def train_epoch(args, model, criterion, optimizer, train_dataloader, epoch, epochs,
                 f):
     """
 	Train model for one epoch
@@ -33,7 +33,7 @@ def train_epoch(args, model, criterion, optimiser, train_dataloader, epoch, epoc
     for batch, inputs in enumerate(train_dataloader):
         inputs = Variable(inputs.to(args.device))
 
-        optimiser.zero_grad()
+        optimizer.zero_grad()
 
         # forward
         out = model(inputs)
@@ -42,26 +42,30 @@ def train_epoch(args, model, criterion, optimiser, train_dataloader, epoch, epoc
 
         # backward
         out_criterion["loss"].backward()
-        optimiser.step()
+        optimizer.step()
 
         # keep track of loss
         loss.update(out_criterion["loss"].item(), inputs.size(0))
         mse_loss.update(out_criterion["mse_loss"].item(), inputs.size(0))
         bpp_loss.update(out_criterion["bpp_loss"].item(), inputs.size(0))
 
+        if loss.avg>10 and epoch>1:
+            for name, parms in model.named_parameters():	
+                print('-->name:', name, '-->grad_requirs:',parms.requires_grad, ' -->grad_value:',parms.grad)
+
         # print out loss and visualise results
         if batch % 10 == 0:
             print(
                 'Epoch {}/{}:[{}]/[{}]'.format(
                     epoch, epochs, batch, len(train_dataloader)).ljust(30),
-                'Loss: %.4f'.ljust(10) % (loss.avg),
-                'mse_loss: %.4f'.ljust(10) % (mse_loss.avg),
-                'bpp_loss: %.4f'.ljust(10) % (bpp_loss.avg))
+                'Loss: %.4f'.ljust(14) % (loss.avg),
+                'mse_loss: %.6f'.ljust(19) % (mse_loss.avg),
+                'bpp_loss: %.4f'.ljust(17) % (bpp_loss.avg))
             f.write('Epoch {}/{}:[{}]/[{}]'.format(
                 epoch, epochs, batch, len(train_dataloader)).ljust(30))
-            f.write('Loss: %.4f'.ljust(10) % (loss.avg))
-            f.write('mse_loss: %.4f'.ljust(10) % (mse_loss.avg))
-            f.write('bpp_loss: %.4f\n'.ljust(10) % (bpp_loss.avg))
+            f.write('Loss: %.4f'.ljust(14) % (loss.avg))
+            f.write('mse_loss: %.6f'.ljust(19) % (mse_loss.avg))
+            f.write('bpp_loss: %.4f\n'.ljust(17) % (bpp_loss.avg))
 
     return loss.avg
 
@@ -72,7 +76,6 @@ def test_epoch(args, model, criterion, test_dataloader, epoch, f):
     loss = AverageMeter()
     bpp_loss = AverageMeter()
     mse_loss = AverageMeter()
-    aux_loss = AverageMeter()
 
     with torch.no_grad():
         for inputs in test_dataloader:
@@ -84,15 +87,15 @@ def test_epoch(args, model, criterion, test_dataloader, epoch, f):
             loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
 
-        f.write('Epoch {}'.format(epoch).ljust(15))
-        f.write('Loss: %.4f'.ljust(10) % (loss.avg))
-        f.write('mse_loss: %.4f'.ljust(10) % (mse_loss.avg))
-        f.write('bpp_loss: %.4f\n'.ljust(10) % (bpp_loss.avg))
+        f.write('Epoch {} valid '.format(epoch).ljust(30))
+        f.write('Loss: %.4f'.ljust(14) % (loss.avg))
+        f.write('mse_loss: %.6f'.ljust(19) % (mse_loss.avg))
+        f.write('bpp_loss: %.4f\n'.ljust(17) % (bpp_loss.avg))
 
-    print('Epoch {}'.format(epoch).ljust(15),
-          'Loss: %.4f'.ljust(10) % (loss.avg),
-          'mse_loss: %.4f'.ljust(10) % (mse_loss.avg),
-          'bpp_loss: %.4f'.ljust(10) % (bpp_loss.avg))
+    print('Epoch {} valid '.format(epoch).ljust(30),
+          'Loss: %.4f'.ljust(14) % (loss.avg),
+          'mse_loss: %.6f'.ljust(19) % (mse_loss.avg),
+          'bpp_loss: %.4f'.ljust(17) % (bpp_loss.avg))
 
     return loss.avg
 
@@ -106,6 +109,8 @@ def plot(y1, y2, label, outf):
     plt.ylabel(label)
 
     plt.savefig(outf + label + '.jpg')
+    plt.cla()
+    plt.close("all") 
 
 
 def train(args):
@@ -147,14 +152,16 @@ def train(args):
 
     criterion = RateDistortionLoss(args.lmbda)
     criterion.cuda()
-    optimiser = optim.Adam(model.parameters(), lr=args.lr)
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimiser, "min")
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
+    #lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
+    #lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.8)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [5,20,40,80], gamma=0.5)
 
     # load model and continue training
     if args.continue_training:
         checkpoint = torch.load(args.checkpoint)
         model.load_state_dict(checkpoint['state_dict'])
-        optimiser.load_state_dict(checkpoint['optimiser'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
         lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
         start_epoch = checkpoint['epoch']
         f = open(save_path + 'loss.txt', 'a+')
@@ -174,9 +181,11 @@ def train(args):
     train_loss_sum = []
     test_loss_sum = []
     for epoch in range(start_epoch, args.epochs):
-        train_loss = train_epoch(args, model, criterion, optimiser, train_dataloader,
+        train_loss = train_epoch(args, model, criterion, optimizer, train_dataloader,
                                  epoch, args.epochs, f)
         test_loss = test_epoch(args, model, criterion, test_dataloader, epoch, f)
+        lr_scheduler.step()
+        print("第%d个epoch的学习率：%f" % (epoch, optimizer.param_groups[0]['lr']))
 
         train_loss_sum.append(train_loss)
         test_loss_sum.append(test_loss)
@@ -186,14 +195,15 @@ def train(args):
             state = {
                 'epoch': epoch,
                 'state_dict': model.module.state_dict() if gpu_num>1 else model.state_dict(),
-                'optimizer': optimiser.state_dict(),
+                'optimizer': optimizer.state_dict(),
                 "lr_scheduler": lr_scheduler.state_dict(),
             }
             torch.save(
                 state,
                 os.path.join(save_path, "checkpoint_{}.pth".format(epoch + 1)))
+        plot(train_loss_sum, test_loss_sum, 'loss', save_path)
 
-    plot(train_loss_sum, test_loss_sum, 'loss', save_path)
+   
 
 
 if __name__ == "__main__":

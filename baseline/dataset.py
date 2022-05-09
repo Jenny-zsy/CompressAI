@@ -105,6 +105,24 @@ class CLIC_dataset(Dataset):
     def __len__(self):
         return len(self.keys)
 
+class TestKodakDataset(Dataset):
+    def __init__(self, data_dir):
+        self.data_dir = data_dir
+        if not os.path.exists(data_dir):
+            raise Exception(f"[!] {self.data_dir} not exitd")
+        self.image_path = sorted(glob.glob(os.path.join(self.data_dir, "*.*")))
+
+    def __getitem__(self, item):
+        image_ori = self.image_path[item]
+        image = Image.open(image_ori).convert('RGB')
+        transform = transforms.Compose([
+            transforms.ToTensor(),
+        ])
+        return transform(image)
+
+    def __len__(self):
+        return len(self.image_path)
+
 from torchvision import transforms
 from torch.utils.data import DataLoader
 
