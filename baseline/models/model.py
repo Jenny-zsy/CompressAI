@@ -261,7 +261,7 @@ class ContextHyperprior(nn.Module):
                                           channel_mid=channel_M)
 
         self.entropy_parameters = EntropyParameters(channel_in=channel_M * 4)
-        self.context = ContextPrediction()
+        self.context = ContextPrediction(channel_in=channel_M)
         self.entropy_bottleneck = EntropyBottleneck(channels=channel_N)
         self.gaussian = GaussianConditional(None)
 
