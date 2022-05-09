@@ -20,8 +20,7 @@ from utils import AverageMeter
 from dataset import CLIC_dataset
 
 
-def train_epoch(args, model, criterion, optimizer, train_dataloader, epoch, epochs,
-                f):
+def train_epoch(args, model, criterion, optimizer, train_dataloader, epoch, epochs, f):
     """
 	Train model for one epoch
 	"""
@@ -49,9 +48,10 @@ def train_epoch(args, model, criterion, optimizer, train_dataloader, epoch, epoc
         mse_loss.update(out_criterion["mse_loss"].item(), inputs.size(0))
         bpp_loss.update(out_criterion["bpp_loss"].item(), inputs.size(0))
 
-        if loss.avg>10 and epoch>1:
-            for name, parms in model.named_parameters():	
-                print('-->name:', name, '-->grad_requirs:',parms.requires_grad, ' -->grad_value:',parms.grad)
+        if loss.avg > 10 and epoch > 1:
+            for name, parms in model.named_parameters():
+                print('-->name:', name, '-->grad_requirs:',
+                      parms.requires_grad, ' -->grad_value:', parms.grad)
 
         # print out loss and visualise results
         if batch % 10 == 0:
@@ -61,8 +61,7 @@ def train_epoch(args, model, criterion, optimizer, train_dataloader, epoch, epoc
                 'Loss: %.4f'.ljust(14) % (loss.avg),
                 'mse_loss: %.6f'.ljust(19) % (mse_loss.avg),
                 'bpp_loss: %.4f'.ljust(17) % (bpp_loss.avg))
-            f.write('Epoch {}/{}:[{}]/[{}]'.format(
-                epoch, epochs, batch, len(train_dataloader)).ljust(30))
+            f.write('Epoch {}/{}:[{}]/[{}]'.format(epoch, epochs, batch, len(train_dataloader)).ljust(30))
             f.write('Loss: %.4f'.ljust(14) % (loss.avg))
             f.write('mse_loss: %.6f'.ljust(19) % (mse_loss.avg))
             f.write('bpp_loss: %.4f\n'.ljust(17) % (bpp_loss.avg))
@@ -110,52 +109,53 @@ def plot(y1, y2, label, outf):
 
     plt.savefig(outf + label + '.jpg')
     plt.cla()
-    plt.close("all") 
+    plt.close("all")
 
 
 def train(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = './results/lr{}_bs{}_lambda{}/'.format(args.lr, args.batch_size, args.lmbda)
+    save_path = './results/chN{}_chM{}_lambda{}_bs{}_lr{}_miles{}_gamma/'.format(
+        args.channel_N, args.channel_M, args.lmbda, args.batch_size, args.lr, args.milestones, args.gamma)
     if not os.path.exists(save_path):
         os.mkdir(save_path)
-
-    train_transforms = transforms.Compose(
+    '''train_transforms = transforms.Compose(
         [transforms.RandomCrop(args.patch_size),
          transforms.ToTensor()])
     test_transforms = transforms.Compose(
         [transforms.CenterCrop(args.patch_size),
-         transforms.ToTensor()])
+         transforms.ToTensor()])'''
 
     # load dataset
-    train_dataset = CLIC_dataset(args.dataset,
-                                mode="train")
-    test_dataset = CLIC_dataset(args.dataset,
-                               mode="valid")
+    train_dataset = CLIC_dataset(args.dataset, mode="train")
+    test_dataset = CLIC_dataset(args.dataset, mode="valid")
 
     # create data loader
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=args.batch_size*gpu_num,
+        batch_size=args.batch_size * gpu_num,
         num_workers=args.num_workers,
         shuffle=True,
     )
     test_dataloader = DataLoader(
         test_dataset,
-        batch_size=args.test_batch_size*gpu_num,
+        batch_size=args.test_batch_size * gpu_num,
         num_workers=args.num_workers,
         shuffle=False,
     )
 
-    model = ContextHyperprior()
+    model = ContextHyperprior(channel_N=args.channel_N,
+                              channel_M=args.channel_M)
 
     criterion = RateDistortionLoss(args.lmbda)
     criterion.cuda()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     #lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
     #lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.8)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, [5,20,40,80], gamma=0.5)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer,
+                                                  args.milestones,
+                                                  gamma=args.gamma)
 
     # load model and continue training
     if args.continue_training:
@@ -175,15 +175,15 @@ def train(args):
                                 device_ids=device_ids,
                                 output_device=device_ids[0])
     model.to(args.device)
-    
 
     # training
     train_loss_sum = []
     test_loss_sum = []
     for epoch in range(start_epoch, args.epochs):
-        train_loss = train_epoch(args, model, criterion, optimizer, train_dataloader,
-                                 epoch, args.epochs, f)
-        test_loss = test_epoch(args, model, criterion, test_dataloader, epoch, f)
+        train_loss = train_epoch(args, model, criterion, optimizer,
+                                 train_dataloader, epoch, args.epochs, f)
+        test_loss = test_epoch(args, model, criterion, test_dataloader, epoch,
+                               f)
         lr_scheduler.step()
         print("第%d个epoch的学习率：%f" % (epoch, optimizer.param_groups[0]['lr']))
 
@@ -191,10 +191,10 @@ def train(args):
         test_loss_sum.append(test_loss)
 
         # save the model
-        if epoch % 10 == 9:
+        if epoch % 100 == 9:
             state = {
                 'epoch': epoch,
-                'state_dict': model.module.state_dict() if gpu_num>1 else model.state_dict(),
+                'state_dict': model.module.state_dict() if gpu_num > 1 else model.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 "lr_scheduler": lr_scheduler.state_dict(),
             }
@@ -202,8 +202,6 @@ def train(args):
                 state,
                 os.path.join(save_path, "checkpoint_{}.pth".format(epoch + 1)))
         plot(train_loss_sum, test_loss_sum, 'loss', save_path)
-
-   
 
 
 if __name__ == "__main__":
@@ -214,7 +212,7 @@ if __name__ == "__main__":
                         help='number of epoch for training')
     parser.add_argument('-batch_size',
                         type=int,
-                        default=8,
+                        default=32,
                         help='number of batch_size for training')
     parser.add_argument('-test_batch_size',
                         type=int,
@@ -226,9 +224,9 @@ if __name__ == "__main__":
                         default=1,
                         help="Dataloaders threads (default: %(default)s)")
     parser.add_argument('-continue_training',
-						type=bool,
-        				default=False,
-        				help='whether to use pretrained model from the checkpoint file')
+                        type=bool,
+                        default=False,
+                        help='whether to use pretrained model from the checkpoint file')
     parser.add_argument('-checkpoint',
                         type=str,
                         default='compression_model.pth',
@@ -238,20 +236,30 @@ if __name__ == "__main__":
                         default='/data1/zhaoshuyi/Datasets/CLIC2020/',
                         help='path to the folder with images')
     parser.add_argument("--patch-size",
-						type=int,
-						nargs=2,
-						default=(256, 256),
-						help="Size of the patches to be cropped (default: %(default)s)")
+                        type=int,
+                        nargs=2,
+                        default=(256, 256),
+                        help="Size of the patches to be cropped (default: %(default)s)")
     parser.add_argument('-lr',
                         type=float,
                         default=1e-4,
                         help='path to the folder with grayscale images')
+    parser.add_argument("--milestones",
+                        type=list,
+                        default=[10,40,100],
+                        help="how many epoch to reduce the lr")
+    parser.add_argument("--gamma",
+                        type=int,
+                        default=0.5,
+                        help="how much to reduce the lr each time")
     parser.add_argument("--gpus", type=str, default="0", help='path log files')
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--lmbda",
-						type=float,
-						default=1e-2,
-						help="Bit-rate distortion parameter (default: %(default)s)")
+                        type=float,
+                        default=1e-2,
+                        help="Bit-rate distortion parameter (default: %(default)s)")
+    parser.add_argument('--channel_N', type=int, default=128)
+    parser.add_argument('--channel_M', type=int, default=192)
     args = parser.parse_args()
 
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
