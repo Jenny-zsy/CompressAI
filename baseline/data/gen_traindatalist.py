@@ -7,6 +7,7 @@ def gen_filelist(path, num, f):
     Minname = ''
     cnt = 0
     imgsizemap = {}
+    imgsort = []
     folders = glob.glob(os.path.join(path, '*'))
     folders.sort()
     for folder in folders:
@@ -18,6 +19,7 @@ def gen_filelist(path, num, f):
             cnt += 1
             imgname = os.path.join(img.split('/')[-2], img.split('/')[-1]) #Relative path
             imgsize = os.path.getsize(img)
+
             #print(imgname, imgsize)
 
             '''----------Maintain a dictionary with the largest num pictures. ----------'''
@@ -39,6 +41,6 @@ def gen_filelist(path, num, f):
 
 if __name__ == "__main__":
 
-    path = '*/ImageNet_ILSVRC2012/train/'
-    txt = './images/train.txt'
-    gen_filelist(path, 8000, txt)
+    path = '/data1/langzhiqiang/ImageNet_ILSVRC2012/train/'
+    txt = './data/train.txt'
+    gen_filelist(path, 8500, txt)

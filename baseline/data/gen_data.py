@@ -27,25 +27,33 @@ def Im2Patch(img, win, stride=1):
             k = k + 1
     return Y.reshape([endc, win, win, TotalPatNum])
 
-def gen_data_from_list(path, txt, patch_size, stride):
+def gen_data_from_list(path, txt, patch_size, stride, num):
     global toTensor, h5f
 
-    num = 0
+    patch = 0
     list = np.loadtxt(txt, dtype=np.str)
     for i in range(len(list)):
+
+        if num == 0:
+            break
+
         img_path = os.path.join(path, list[i][0])
         img = Image.open(img_path).convert("RGB")
         img = toTensor(img)
 
+        if img.shape[1] < patch_size or img.shape[2] < patch_size:
+            continue
+        num = num - 1
+        
         patches = Im2Patch(img, patch_size, stride)
         patch_num = patches.shape[3]
         print('{} has {} samples after patch'.format(list[i][0], patch_num))
 
         for j in range(patch_num):
-            h5f.create_dataset(str(num), data=patches[:,:,:,j], dtype=np.float32)
-            num += 1
+            h5f.create_dataset(str(patch), data=patches[:,:,:,j], dtype=np.float32)
+            patch += 1
                 
-    print('{} samples\n'.format(num))
+    print('{} samples\n'.format(patch))
 
 def gen_data(path, patch_size, stride, mode='train'):
     """
@@ -91,11 +99,11 @@ def gen_data(path, patch_size, stride, mode='train'):
 if __name__ == "__main__":
 
     toTensor=transforms.ToTensor()# 实例化一个toTensor
-    h5f = h5py.File('./data/train.h5', 'w')
+    h5f = h5py.File('./data/train_ImageNet.h5', 'w')
 
     #path = '/data1/zhaoshuyi/Datasets/CLIC2020/'
     #path = '/data1/zhaoshuyi/Datasets/COCO/train2017/'
     path = '/data1/langzhiqiang/ImageNet_ILSVRC2012/train/'
     txt = './data/train.txt'
-    gen_data_from_list(path=path, txt=txt, patch_size=256, stride=256)
+    gen_data_from_list(path=path, txt=txt, patch_size=256, stride=256, num=8000)
     h5f.close()
