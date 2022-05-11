@@ -75,59 +75,6 @@ def gen_data(path, h5f, patch_size, stride, mode='train'):
                 
     print('{} {} samples\n'.format(num-1, mode))
 
-def gen_filelist(path, num, f):
-    Minsize = 0
-    Minname = ''
-    cnt = 0
-    imgsizemap = {}
-    folders = glob.glob(os.path.join(path, '*'))
-    folders.sort()
-    for folder in folders:
-        print(folder)
-        #floder_name = folder.split('/')[-1]
-        imgs = glob.glob(os.path.join(folder, '*.JPEG'))
-        imgs.sort()
-        for img in imgs:
-            cnt += 1
-            imgname = os.path.join(img.split('/')[-2], img.split('/')[-1]) #Relative path
-            imgsize = os.path.getsize(img)
-            #print(imgname, imgsize)
-
-            '''----------Maintain a dictionary with the largest num pictures. ----------'''
-            if cnt < num:
-                imgsizemap.setdefault(imgname, imgsize)
-            elif cnt == num:
-                imgsizemap.setdefault(imgname, imgsize)
-                imgsort = sorted(imgsizemap.items(), key=lambda d:d[1], reverse=False)
-                Minname = imgsort[0][0]
-                Minsize = imgsort[0][1]
-            else:
-                if imgsize > Minsize:
-                    del imgsizemap[Minname]
-                    imgsizemap.setdefault(imgname, imgsize)
-                    imgsort = sorted(imgsizemap.items(), key=lambda d:d[1], reverse=False)
-                    Minname = imgsort[0][0]
-                    Minsize = imgsort[0][1]
-    np.savetxt(f, imgsort, fmt = "%s", delimiter = ' ', newline = '\n')
-
-    '''for parent, dirnames, filenames in os.walk(path):
-        #print(dirnames)
-        for dirname in dirnames:
-            print(dirname)
-            '''
-        #filenames.sort()
-    '''for filename in filenames :
-            cnt += 1
-            fileDir = os.path.join(parent,filename)
-            filesize = os.path.getsize(fileDir)
-            filemap.setdefault(filename, filesize)
-            #print(fileDir, filesize)
-            if cnt > 10:
-                break
-    fileList = sorted(filemap.items(), key=lambda d:d[1], reverse=True)
-    fileList = fileList[:num]
-    np.savetxt(f, fileList, fmt = "%s", delimiter = ' ', newline = '\n')
-'''
 if __name__ == "__main__":
 
     path1 = '/data1/zhaoshuyi/Datasets/CLIC2020/'
