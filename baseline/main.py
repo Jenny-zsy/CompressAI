@@ -17,7 +17,7 @@ from PIL import Image
 from models.model import ContextHyperprior
 from ratedistortionloss import RateDistortionLoss
 from utils import AverageMeter
-from dataset import CLIC_dataset
+from dataset import h5dataset
 
 
 def train_epoch(args, model, criterion, optimizer, train_dataloader, epoch, epochs, f):
@@ -116,20 +116,14 @@ def train(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = './results/chN{}_chM{}_lambda{}_bs{}_lr{}_miles{}_gamma/'.format(
+    save_path = './results/{}_chN{}_chM{}_lambda{}_bs{}_lr{}_miles{}_gamma{}/'.format(args.train_data,
         args.channel_N, args.channel_M, args.lmbda, args.batch_size, args.lr, args.milestones, args.gamma)
     if not os.path.exists(save_path):
         os.mkdir(save_path)
-    '''train_transforms = transforms.Compose(
-        [transforms.RandomCrop(args.patch_size),
-         transforms.ToTensor()])
-    test_transforms = transforms.Compose(
-        [transforms.CenterCrop(args.patch_size),
-         transforms.ToTensor()])'''
 
     # load dataset
-    train_dataset = CLIC_dataset(args.dataset, mode="train")
-    test_dataset = CLIC_dataset(args.dataset, mode="valid")
+    train_dataset = h5dataset(mode="train", h5path='./data/train_{}.h5'.format(args.train_data))
+    test_dataset = h5dataset( mode="valid", h5path='./data/valid.h5')
 
     # create data loader
     train_dataloader = DataLoader(
@@ -206,6 +200,7 @@ def train(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process some integers.')
+    parser.add_argument('--train_data', type=str, choices=['ImageNet', 'CLIC'], default='ImageNet', help='data for training')
     parser.add_argument('-epochs',
                         type=int,
                         default=2000,
@@ -231,10 +226,6 @@ if __name__ == "__main__":
                         type=str,
                         default='compression_model.pth',
                         help='path where to save checkpoint during training')
-    parser.add_argument('-dataset',
-                        type=str,
-                        default='/data1/zhaoshuyi/Datasets/CLIC2020/',
-                        help='path to the folder with images')
     parser.add_argument("--patch-size",
                         type=int,
                         nargs=2,
@@ -246,7 +237,7 @@ if __name__ == "__main__":
                         help='path to the folder with grayscale images')
     parser.add_argument("--milestones",
                         type=list,
-                        default=[10,40,100],
+                        default=[5],
                         help="how many epoch to reduce the lr")
     parser.add_argument("--gamma",
                         type=int,
