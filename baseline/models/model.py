@@ -18,46 +18,6 @@ from models.masked_conv import MaskedConv2d
 from models.entropy import EntropyBottleneck, GaussianConditional
 
 
-class Model(nn.Module):
-
-    def __init__(self, device):
-        self.device = device
-        super(Model, self).__init__()
-        self.encoder = Encoder(3, self.device)
-        self.decoder = Decoder(192, self.device)
-        self.hyper_encoder = HyperEncoder(192)
-        self.hyper_decoder = HyperDecoder(192)
-        self.entropy = EntropyParameters(768)
-        self.context = ContextPrediction(192)
-
-    def quantize(self, x):
-        """
-		Quantize function:  The use of round function during training will cause the gradient to be 0 and will stop encoder from training.
-		Therefore to immitate quantisation we add a uniform noise between -1/2 and 1/2
-		:param x: Tensor
-		:return: Tensor
-		"""
-        uniform = -1 * torch.rand(x.shape) + 1 / 2
-        return x + uniform.to(self.device)
-
-    def forward(self, x):
-        y = self.encoder(x)
-        y_hat = self.quantize(y)
-        z = self.hyper_encoder(y)
-        z_hat = self.quantize(z)
-        phi = self.context(y_hat)
-        psi = self.hyper_decoder(z_hat)
-        phi_psi = torch.cat([phi, psi], dim=1)
-        sigma_mu = self.entropy(phi_psi)
-        sigma, mu = torch.split(sigma_mu, y_hat.shape[1], dim=1)
-
-        # clip sigma so it's larger than 0 - to make sure it satisfies statistical requirement of sigma >0 and not too close to 0 so it doesn't cause computational issues
-        sigma = torch.clamp(sigma, min=1e-6)
-
-        x_hat = self.decoder(y_hat)
-        return x_hat, sigma, mu, y_hat, z_hat
-
-
 class Encoder(nn.Module):
 
     def __init__(self, channel_in=3, channel_mid=192, channel_out=192):
