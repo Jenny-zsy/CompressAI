@@ -1,3 +1,34 @@
+# from https://github.com/InterDigitalInc/CompressAI/
+
+# Copyright (c) 2021-2022, InterDigital Communications, Inc
+# All rights reserved.
+
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted (subject to the limitations in the disclaimer
+# below) provided that the following conditions are met:
+
+# * Redistributions of source code must retain the above copyright notice,
+#   this list of conditions and the following disclaimer.
+# * Redistributions in binary form must reproduce the above copyright notice,
+#   this list of conditions and the following disclaimer in the documentation
+#   and/or other materials provided with the distribution.
+# * Neither the name of InterDigital Communications, Inc nor the names of its
+#   contributors may be used to endorse or promote products derived from this
+#   software without specific prior written permission.
+
+# NO EXPRESS OR IMPLIED LICENSES TO ANY PARTY'S PATENT RIGHTS ARE GRANTED BY
+# THIS LICENSE. THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND
+# CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT
+# NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+# PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR
+# CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL,
+# EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+# PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;
+# OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+# WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+# OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
 import warnings
 
 from typing import Any, Callable, List, Optional, Tuple, Union
@@ -10,24 +41,62 @@ import torch.nn.functional as F
 
 from torch import Tensor
 
-#from _CXX import pmf_to_quantized_cdf as _pmf_to_quantized_cdf
-from models.bound_ops import LowerBound
+from models._CXX import pmf_to_quantized_cdf as _pmf_to_quantized_cdf
+from models.ops import LowerBound
 
 
-'''def default_entropy_coder():
+class _EntropyCoder:
+    """Proxy class to an actual entropy coder class."""
+
+    def __init__(self, method):
+        if not isinstance(method, str):
+            raise ValueError(f'Invalid method type "{type(method)}"')
+
+        from compressai import available_entropy_coders
+
+        if method not in available_entropy_coders():
+            methods = ", ".join(available_entropy_coders())
+            raise ValueError(
+                f'Unknown entropy coder "{method}"' f" (available: {methods})"
+            )
+
+        if method == "ans":
+            from compressai import ans
+
+            encoder = ans.RansEncoder()
+            decoder = ans.RansDecoder()
+        elif method == "rangecoder":
+            import range_coder
+
+            encoder = range_coder.RangeEncoder()
+            decoder = range_coder.RangeDecoder()
+
+        self.name = method
+        self._encoder = encoder
+        self._decoder = decoder
+
+    def encode_with_indexes(self, *args, **kwargs):
+        return self._encoder.encode_with_indexes(*args, **kwargs)
+
+    def decode_with_indexes(self, *args, **kwargs):
+        return self._decoder.decode_with_indexes(*args, **kwargs)
+
+
+def default_entropy_coder():
     from compressai import get_entropy_coder
 
-    return get_entropy_coder()'''
+    return get_entropy_coder()
 
-def _forward(self, *args: Any) -> Any:
-    raise NotImplementedError()
 
-'''
 def pmf_to_quantized_cdf(pmf: Tensor, precision: int = 16) -> Tensor:
     cdf = _pmf_to_quantized_cdf(pmf.tolist(), precision)
     cdf = torch.IntTensor(cdf)
     return cdf
-'''
+
+
+def _forward(self, *args: Any) -> Any:
+    raise NotImplementedError()
+
 
 class EntropyModel(nn.Module):
     r"""Entropy model base class.
@@ -47,10 +116,10 @@ class EntropyModel(nn.Module):
     ):
         super().__init__()
 
-        '''if entropy_coder is None:
+        if entropy_coder is None:
             entropy_coder = default_entropy_coder()
         self.entropy_coder = _EntropyCoder(entropy_coder)
-        self.entropy_coder_precision = int(entropy_coder_precision)'''
+        self.entropy_coder_precision = int(entropy_coder_precision)
 
         self.use_likelihood_bound = likelihood_bound > 0
         if self.use_likelihood_bound:
@@ -256,6 +325,7 @@ class EntropyModel(nn.Module):
             ).reshape(outputs[i].size())
         outputs = self.dequantize(outputs, means, dtype)
         return outputs
+
 
 class EntropyBottleneck(EntropyModel):
     r"""Entropy bottleneck layer, introduced by J. Ballé, D. Minnen, S. Singh,
@@ -479,6 +549,7 @@ class EntropyBottleneck(EntropyModel):
         medians = medians.expand(len(strings), *([-1] * (len(size) + 1)))
         return super().decompress(strings, indexes, medians.dtype, medians)
 
+
 class GaussianConditional(EntropyModel):
     r"""Gaussian conditional layer, introduced by J. Ballé, D. Minnen, S. Singh,
     S. J. Hwang, N. Johnston, in `"Variational image compression with a scale
@@ -618,4 +689,3 @@ class GaussianConditional(EntropyModel):
         for s in self.scale_table[:-1]:
             indexes -= (scales <= s).int()
         return indexes
-

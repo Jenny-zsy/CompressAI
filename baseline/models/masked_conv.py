@@ -1,6 +1,6 @@
 # from https://www.codeproject.com/Articles/5061271/PixelCNN-in-Autoregressive-Models
-from torch import nn
 
+from torch import nn
 
 class MaskedConv2d(nn.Conv2d):
 	'''

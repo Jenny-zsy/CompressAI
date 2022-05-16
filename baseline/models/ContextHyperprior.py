@@ -6,12 +6,8 @@ Minnen, David, Johannes Ballé, and George D. Toderici.
 ) Advances in Neural Information Processing Systems. 2018.
 """
 
-from builtins import print
-from turtle import forward
-from urllib.error import ContentTooShortError
 import torch
 from torch import nn
-import numpy as np
 
 from models.gdn import GDN
 from models.masked_conv import MaskedConv2d
@@ -28,30 +24,32 @@ class Encoder(nn.Module):
                                     kernel_size=5,
                                     stride=2,
                                     padding=5 // 2)
+        self.gdn1 = GDN(channel_mid, inverse=False)
         self.conv1 = nn.Conv2d(in_channels=channel_mid,
                                out_channels=channel_mid,
                                kernel_size=5,
                                stride=2,
                                padding=5 // 2)
+        self.gdn2 = GDN(channel_mid, inverse=False)
         self.conv2 = nn.Conv2d(in_channels=channel_mid,
                                out_channels=channel_mid,
                                kernel_size=5,
                                stride=2,
                                padding=5 // 2)
+        self.gdn3 = GDN(channel_mid, inverse=False)
         self.conv3 = nn.Conv2d(in_channels=channel_mid,
                                out_channels=channel_out,
                                kernel_size=5,
                                stride=2,
                                padding=5 // 2)
-        self.gdn = GDN(channel_mid, inverse=False)
 
     def forward(self, x):
         x = self.first_conv(x)
-        x = self.gdn(x)
+        x = self.gdn1(x)
         x = self.conv1(x)
-        x = self.gdn(x)
+        x = self.gdn2(x)
         x = self.conv2(x)
-        x = self.gdn(x)
+        x = self.gdn3(x)
         x = self.conv3(x)
         return x
 
@@ -67,18 +65,21 @@ class Decoder(nn.Module):
                                           stride=2,
                                           output_padding=1,
                                           padding=5 // 2)
+        self.igdn1 = GDN(channel_mid, inverse=True)
         self.deconv2 = nn.ConvTranspose2d(in_channels=channel_mid,
                                           out_channels=channel_mid,
                                           kernel_size=5,
                                           stride=2,
                                           output_padding=1,
                                           padding=5 // 2)
+        self.igdn2 = GDN(channel_mid, inverse=True)
         self.deconv3 = nn.ConvTranspose2d(in_channels=channel_mid,
                                           out_channels=channel_mid,
                                           kernel_size=5,
                                           stride=2,
                                           output_padding=1,
                                           padding=5 // 2)
+        self.igdn3 = GDN(channel_mid, inverse=True)
         self.last_deconv = nn.ConvTranspose2d(in_channels=channel_mid,
                                               out_channels=channel_out,
                                               kernel_size=5,
@@ -89,31 +90,30 @@ class Decoder(nn.Module):
 
     def forward(self, x):
         x = self.deconv1(x)
-        x = self.igdn(x)
+        x = self.igdn1(x)
         x = self.deconv2(x)
-        x = self.igdn(x)
+        x = self.igdn2(x)
         x = self.deconv3(x)
-        x = self.igdn(x)
+        x = self.igdn3(x)
         x = self.last_deconv(x)
         return x
 
 
 class HyperEncoder(nn.Module):
 
-    def __init__(self, channel_in=192, channel_mid=192):
+    def __init__(self, channel_in=192, channel_out=192):
         super(HyperEncoder, self).__init__()
-        channel_out = channel_mid
         self.conv1 = nn.Conv2d(in_channels=channel_in,
-                               out_channels=channel_mid,
+                               out_channels=channel_out,
                                kernel_size=3,
                                stride=1,
                                padding=3 // 2)
-        self.conv2 = nn.Conv2d(in_channels=channel_mid,
-                               out_channels=channel_mid,
+        self.conv2 = nn.Conv2d(in_channels=channel_out,
+                               out_channels=channel_out,
                                kernel_size=5,
                                stride=2,
                                padding=5 // 2)
-        self.conv3 = nn.Conv2d(in_channels=channel_mid,
+        self.conv3 = nn.Conv2d(in_channels=channel_out,
                                out_channels=channel_out,
                                kernel_size=5,
                                stride=2,
@@ -121,9 +121,9 @@ class HyperEncoder(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-        x = nn.LeakyReLU()(x)
+        x = nn.LeakyReLU(inplace=True)(x)
         x = self.conv2(x)
-        x = nn.LeakyReLU()(x)
+        x = nn.LeakyReLU(inplace=True)(x)
         x = self.conv3(x)
         return x
 
@@ -154,9 +154,9 @@ class HyperDecoder(nn.Module):
 
     def forward(self, x):
         x = self.deconv1(x)
-        x = nn.LeakyReLU()(x)
+        x = nn.LeakyReLU(inplace=True)(x)
         x = self.deconv2(x)
-        x = nn.LeakyReLU()(x)
+        x = nn.LeakyReLU(inplace=True)(x)
         x = self.deconv3(x)
         return x
 
@@ -181,9 +181,9 @@ class EntropyParameters(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-        x = nn.LeakyReLU()(x)
+        x = nn.LeakyReLU(inplace=True)(x)
         x = self.conv2(x)
-        x = nn.LeakyReLU()(x)
+        x = nn.LeakyReLU(inplace=True)(x)
         x = self.conv3(x)
         return x
 
@@ -214,10 +214,12 @@ class ContextHyperprior(nn.Module):
         self.encoder = Encoder(channel_in=channel_in,
                                channel_mid=channel_N,
                                channel_out=channel_M)
-        self.decoder = Decoder(channel_in=channel_M, channel_out=channel_out)
+        self.decoder = Decoder(channel_in=channel_M,
+                               channel_mid=channel_N,
+                               channel_out=channel_out)
 
         self.hyper_encoder = HyperEncoder(channel_in=channel_M,
-                                          channel_mid=channel_N)
+                                          channel_out=channel_N)
         self.hyper_decoder = HyperDecoder(channel_in=channel_N,
                                           channel_mid=channel_M)
 
@@ -230,9 +232,8 @@ class ContextHyperprior(nn.Module):
         """Return the aggregated loss over the auxiliary entropy bottleneck
         module(s).
         """
-        aux_loss = sum(
-            m.loss() for m in self.modules() if isinstance(m, EntropyBottleneck)
-        )
+        aux_loss = sum(m.loss() for m in self.modules()
+                       if isinstance(m, EntropyBottleneck))
         return aux_loss
 
     def forward(self, x):
@@ -269,6 +270,7 @@ class ContextHyperprior(nn.Module):
                 "z": z_likelihoods
             }
         }
+
 
 import math
 

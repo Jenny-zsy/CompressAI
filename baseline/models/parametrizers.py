@@ -1,3 +1,5 @@
+# from https://github.com/InterDigitalInc/CompressAI/
+
 # Copyright (c) 2021-2022, InterDigital Communications, Inc
 # All rights reserved.
 
@@ -32,7 +34,7 @@ import torch.nn as nn
 
 from torch import Tensor
 
-from models.bound_ops import LowerBound
+from bound_ops import LowerBound
 
 
 class NonNegativeParametrizer(nn.Module):
