@@ -16,7 +16,9 @@ from PIL import Image
 
 from ratedistortionloss import RateDistortionLoss
 from utils import AverageMeter
+
 from dataset import h5dataset, h5dataset_train, ImageFolder
+from dataset_hsi import CAVE_Dataset
 
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
@@ -158,20 +160,24 @@ def train(args):
         os.mkdir(save_path)
 
     # load dataset
-    train_transforms = transforms.Compose(
-        [transforms.RandomCrop(args.patch_size),
-         transforms.ToTensor()])
+    if args.train_data == 'ImageNet' or args.data == 'CLIC':
+        train_transforms = transforms.Compose(
+            [transforms.RandomCrop(args.patch_size),
+            transforms.ToTensor()])
 
-    test_transforms = transforms.Compose(
-        [transforms.CenterCrop(args.patch_size),
-         transforms.ToTensor()])
-    train_dataset = ImageFolder(args.dataset,
-                                split="train",
-                                transform=train_transforms)
-    test_dataset = ImageFolder(args.dataset,
-                               split="test",
-                               transform=test_transforms)
-
+        test_transforms = transforms.Compose(
+            [transforms.CenterCrop(args.patch_size),
+            transforms.ToTensor()])
+        train_dataset = ImageFolder(args.dataset,
+                                    split="train",
+                                    transform=train_transforms)
+        valid_dataset = ImageFolder(args.dataset,
+                                split="test",
+                                transform=test_transforms)
+    elif args.train_data == 'CAVE':
+        path = '/data1/zhaoshuyi/Datasets/CAVE/hsi/'
+        train_dataset = CAVE_Dataset(path, args.patch_size, args.patch_size/2, mode='train')
+        valid_dataset = CAVE_Dataset(path, args.patch_size, mode='valid')
     #train_dataset = h5dataset(mode="train", h5path='./data/train_{}.h5'.format(args.train_data))
     #test_dataset = h5dataset( mode="valid", h5path='./data/valid_CLIC.h5')
 
@@ -182,8 +188,8 @@ def train(args):
         num_workers=args.num_workers,
         shuffle=True,
     )
-    test_dataloader = DataLoader(
-        test_dataset,
+    valid_dataloader = DataLoader(
+        valid_dataset,
         batch_size=args.test_batch_size * gpu_num,
         num_workers=args.num_workers,
         shuffle=False,
@@ -226,19 +232,19 @@ def train(args):
 
     # training
     train_loss_sum = []
-    test_loss_sum = []
+    valid_loss_sum = []
     for epoch in range(start_epoch, args.epochs):
 
         print("第%d个epoch的学习率：%f" % (epoch, optimizer.param_groups[0]['lr']))
         train_loss = train_epoch(args, model, criterion, optimizer,
                                  aux_optimizer, train_dataloader, epoch,
                                  args.epochs, f)
-        test_loss = test_epoch(args, model, criterion, test_dataloader, epoch,
+        valid_loss = test_epoch(args, model, criterion, valid_dataloader, epoch,
                                f)
-        lr_scheduler.step(test_loss)
+        lr_scheduler.step(valid_loss)
 
         train_loss_sum.append(train_loss)
-        test_loss_sum.append(test_loss)
+        valid_loss_sum.append(valid_loss)
 
         # save the model
         if epoch % 10 == 9:
@@ -266,20 +272,19 @@ def train(args):
         torch.save(
             state,
             os.path.join(save_path, "checkpoint_{}.pth".format(epoch + 1)))'''
-        plot(train_loss_sum, test_loss_sum, 'loss', save_path)
+        plot(train_loss_sum, valid_loss_sum, 'loss', save_path)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--train_data',
                         type=str,
-                        choices=['ImageNet', 'CLIC'],
+                        choices=['ImageNet', 'CLIC', 'CAVE'],
                         default='CLIC',
                         help='data for training')
     parser.add_argument("-d",
                         "--dataset",
                         type=str,
-                        required=True,
                         help="Training dataset")
     parser.add_argument('--model',
                         type=str,
@@ -315,7 +320,7 @@ if __name__ == "__main__":
         "--patch-size",
         type=int,
         nargs=2,
-        default=(256, 256),
+        default=(128, 128),
         help="Size of the patches to be cropped (default: %(default)s)")
     parser.add_argument('-lr',
                         type=float,
