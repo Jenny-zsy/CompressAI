@@ -1,21 +1,25 @@
+from email.policy import default
+from builtins import type
 import os
 import torch
 import torch.nn as nn
 import numpy as np
 import argparse
 import torchvision
+import matplotlib.pyplot as plt
 
 from torch import optim
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
-import matplotlib.pyplot as plt
 from PIL import Image
-from models.model import ContextHyperprior
+
 from ratedistortionloss import RateDistortionLoss
 from utils import AverageMeter
 from dataset import h5dataset, h5dataset_train, ImageFolder
 
+from models.ContextHyperprior import ContextHyperprior
+from models.cheng2020attention import Cheng2020Attention
 
 def configure_optimizers(net, args):
     """Separate parameters for the main optimizer and the auxiliary optimizer.
@@ -51,8 +55,8 @@ def configure_optimizers(net, args):
     return optimizer, aux_optimizer
 
 
-def train_epoch(args, model, criterion, optimizer, aux_optimizer, train_dataloader, epoch,
-                epochs, f):
+def train_epoch(args, model, criterion, optimizer, aux_optimizer,
+                train_dataloader, epoch, epochs, f):
     """
         Train model for one epoch
         """
@@ -87,14 +91,14 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer, train_dataload
                     epoch, epochs, batch, len(train_dataloader)).ljust(30),
                 'Loss: %.4f'.ljust(14) % (out_criterion["loss"]),
                 'mse_loss: %.6f'.ljust(19) % (out_criterion["mse_loss"]),
-                'bpp_loss: %.4f'.ljust(17) % (out_criterion["bpp_loss"]))
-            f.write('Epoch {}/{}:[{}]/[{}]'.format(
+                'bpp_loss: %.4f'.ljust(17) % (out_criterion["bpp_loss"]),
+                'aux_loss: %.2f'.ljust(17) % (aux_loss.item()))
+            f.write('Epoch: {}/{}:[{}]/[{}]'.format(
                 epoch, epochs, batch, len(train_dataloader)).ljust(30))
             f.write('Loss: %.4f'.ljust(14) % (out_criterion["loss"]))
-            f.write('mse_loss: %.6f'.ljust(19) %
-                    (out_criterion["mse_loss"]))
-            f.write('bpp_loss: %.4f\n'.ljust(17) %
-                    (out_criterion["bpp_loss"]))
+            f.write('mse_loss: %.6f'.ljust(19) % (out_criterion["mse_loss"]))
+            f.write('bpp_loss: %.4f'.ljust(17) % (out_criterion["bpp_loss"]))
+            f.write('aux_loss: %.2f\n'.ljust(17) % (aux_loss.item()))
 
     return loss.avg
 
@@ -116,10 +120,10 @@ def test_epoch(args, model, criterion, test_dataloader, epoch, f):
             loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
 
-        f.write('Epoch {} valid '.format(epoch).ljust(30))
-        f.write('Loss: %.4f'.ljust(14) % (loss.avg))
-        f.write('mse_loss: %.6f'.ljust(19) % (mse_loss.avg))
-        f.write('bpp_loss: %.4f\n'.ljust(17) % (bpp_loss.avg))
+    f.write('Epoch {} valid '.format(epoch).ljust(30))
+    f.write('Loss: %.4f'.ljust(14) % (loss.avg))
+    f.write('mse_loss: %.6f'.ljust(19) % (mse_loss.avg))
+    f.write('bpp_loss: %.4f\n'.ljust(17) % (bpp_loss.avg))
 
     print('Epoch {} valid '.format(epoch).ljust(30),
           'Loss: %.4f'.ljust(14) % (loss.avg),
@@ -146,9 +150,10 @@ def train(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = './results/{}_chN{}_chM{}_lambda{}_bs{}_lr{}_miles{}_gamma{}/'.format(
-        args.train_data, args.channel_N, args.channel_M, args.lmbda,
-        args.batch_size * gpu_num, args.lr, args.milestones, args.gamma)
+    save_path = './results/{}_{}_chN{}_chM{}_lambda{}_bs{}_lr{}_miles{}_gamma{}/'.format(
+        args.model, args.train_data, args.channel_N, args.channel_M,
+        args.lmbda, args.batch_size * gpu_num, args.lr, args.milestones,
+        args.gamma)
     if not os.path.exists(save_path):
         os.mkdir(save_path)
 
@@ -183,9 +188,12 @@ def train(args):
         num_workers=args.num_workers,
         shuffle=False,
     )
-
-    model = ContextHyperprior(channel_N=args.channel_N,
-                              channel_M=args.channel_M)
+    if args.model == 'mbt':
+        model = ContextHyperprior(channel_N=args.channel_N,
+                                  channel_M=args.channel_M)
+    elif args.model == 'cheng2020':
+        model = Cheng2020Attention(channel_N=args.channel_N,
+                                  channel_M=args.channel_M)
 
     criterion = RateDistortionLoss(args.lmbda)
     criterion.cuda()
@@ -222,8 +230,9 @@ def train(args):
     for epoch in range(start_epoch, args.epochs):
 
         print("第%d个epoch的学习率：%f" % (epoch, optimizer.param_groups[0]['lr']))
-        train_loss = train_epoch(args, model, criterion, optimizer, aux_optimizer,
-                                 train_dataloader, epoch, args.epochs, f)
+        train_loss = train_epoch(args, model, criterion, optimizer,
+                                 aux_optimizer, train_dataloader, epoch,
+                                 args.epochs, f)
         test_loss = test_epoch(args, model, criterion, test_dataloader, epoch,
                                f)
         lr_scheduler.step(test_loss)
@@ -232,17 +241,22 @@ def train(args):
         test_loss_sum.append(test_loss)
 
         # save the model
-        '''if epoch % 20 == 19:
+        if epoch % 10 == 9:
             state = {
-                'epoch': epoch,
-                'state_dict': model.module.state_dict() if gpu_num > 1 else model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                "lr_scheduler": lr_scheduler.state_dict(),
+                'epoch':
+                epoch,
+                'state_dict':
+                model.module.state_dict()
+                if gpu_num > 1 else model.state_dict(),
+                'optimizer':
+                optimizer.state_dict(),
+                "lr_scheduler":
+                lr_scheduler.state_dict(),
             }
             torch.save(
                 state,
-                os.path.join(save_path, "checkpoint_{}.pth".format(epoch + 1)))'''
-        state = {
+                os.path.join(save_path, "checkpoint_{}.pth".format(epoch + 1)))
+        '''state = {
             'epoch': epoch,
             'state_dict': model.module.state_dict() if gpu_num > 1 else model.state_dict(),
             'optimizer': optimizer.state_dict(),
@@ -251,7 +265,7 @@ def train(args):
         }
         torch.save(
             state,
-            os.path.join(save_path, "checkpoint_{}.pth".format(epoch + 1)))
+            os.path.join(save_path, "checkpoint_{}.pth".format(epoch + 1)))'''
         plot(train_loss_sum, test_loss_sum, 'loss', save_path)
 
 
@@ -267,6 +281,10 @@ if __name__ == "__main__":
                         type=str,
                         required=True,
                         help="Training dataset")
+    parser.add_argument('--model',
+                        type=str,
+                        default='mbt',
+                        help='Model architecture')
     parser.add_argument('--epochs',
                         type=int,
                         default=1000,
@@ -284,26 +302,30 @@ if __name__ == "__main__":
                         type=int,
                         default=1,
                         help="Dataloaders threads (default: %(default)s)")
-    parser.add_argument('--continue_training',
-                        type=bool,
-                        default=False,
-                        help='whether to use pretrained model from the checkpoint file')
+    parser.add_argument(
+        '--continue_training',
+        type=bool,
+        default=False,
+        help='whether to use pretrained model from the checkpoint file')
     parser.add_argument('--checkpoint',
                         type=str,
                         default='compression_model.pth',
                         help='path where to save checkpoint during training')
-    parser.add_argument("--patch-size",
-                        type=int,
-                        nargs=2,
-                        default=(256, 256),
-                        help="Size of the patches to be cropped (default: %(default)s)")
+    parser.add_argument(
+        "--patch-size",
+        type=int,
+        nargs=2,
+        default=(256, 256),
+        help="Size of the patches to be cropped (default: %(default)s)")
     parser.add_argument('-lr',
                         type=float,
                         default=1e-4,
                         help='path to the folder with grayscale images')
-    parser.add_argument("--aux_lr", 
-                        default=1e-3, 
-                        help="Auxiliary loss learning rate (default: %(default)s)",)
+    parser.add_argument(
+        "--aux_lr",
+        default=1e-3,
+        help="Auxiliary loss learning rate (default: %(default)s)",
+    )
     parser.add_argument("--milestones",
                         type=list,
                         default=[10],
@@ -314,10 +336,11 @@ if __name__ == "__main__":
                         help="how much to reduce the lr each time")
     parser.add_argument("--gpus", type=str, default="0", help='path log files')
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--lmbda",
-                        type=float,
-                        default=1e-2,
-                        help="Bit-rate distortion parameter (default: %(default)s)")
+    parser.add_argument(
+        "--lmbda",
+        type=float,
+        default=1e-2,
+        help="Bit-rate distortion parameter (default: %(default)s)")
     parser.add_argument('--channel_N', type=int, default=128)
     parser.add_argument('--channel_M', type=int, default=192)
     args = parser.parse_args()

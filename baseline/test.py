@@ -1,22 +1,21 @@
-from ast import arg
-import imghdr
-from PIL import Image
 import os
 import json
 import argparse
-
 import numpy as np
 import os
 import torch
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
 import math
+
+from torch.utils.data import DataLoader
 from pytorch_msssim import ms_ssim
 from collections import defaultdict
-
 from images.plot import imsave
-from models.model import ContextHyperprior
+
 from dataset import TestDataset
+
+from models.ContextHyperprior import ContextHyperprior
+from models.cheng2020attention import Cheng2020Attention
 
 def psnr(a: torch.Tensor, b: torch.Tensor) -> float:
     mse = F.mse_loss(a, b).item()
@@ -92,6 +91,10 @@ class MyEncoder(json.JSONEncoder):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Process some integers.')
+    parser.add_argument('--model',
+                        type=str,
+                        default='mbt',
+                        help='Model architecture')
     parser.add_argument('--test_data', default='Kodak', help='test dataset')
     parser.add_argument('--model_path', default="/data1/zhaoshuyi/AIcompress/baseline/results/lr0.0001_bs32_lambda0.01/", help='checkpoint path')
     parser.add_argument('--channel_N', type=int, default=128)
@@ -118,22 +121,25 @@ if __name__ == "__main__":
                              pin_memory=True)
 
     model_path = args.model_path
-    model = ContextHyperprior(channel_N=args.channel_N, channel_M=args.channel_M)
-
+    if args.model == 'mbt':
+        model = ContextHyperprior(channel_N=args.channel_N, channel_M=args.channel_M)
+    else:
+        model = Cheng2020Attention(channel_N=args.channel_N, channel_M=args.channel_M)
     results = defaultdict(list)
-    for i in range(10, args.epochs + 1, 100):
+    for i in range(0, args.epochs + 1, 20):
         if i == 0:
             continue
         checkpoint = torch.load(
             os.path.join(model_path, 'checkpoint_{}.pth'.format(i)))
         model.load_state_dict(checkpoint['state_dict'])
         model.to(args.device)
-
         args.checkpoint = i
 
         metrics = test_checkpoint(model, test_loader, args)
         for k, v in metrics.items():
             results[k].append(v)
+        
+        torch.cuda.empty_cache()
 
     description = (args.test_data)
     output = {
