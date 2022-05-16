@@ -5,9 +5,6 @@
 
     Uses self-attention, residual blocks with small convolutions (3x3 and 1x1),
     and sub-pixel convolutions for up-sampling.
-
-    Args:
-        N (int): Number of channels
 """
 from calendar import prcal
 from typing import ChainMap
