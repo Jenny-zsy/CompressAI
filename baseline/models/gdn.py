@@ -35,7 +35,7 @@ import torch.nn.functional as F
 
 from torch import Tensor
 
-from parametrizers import NonNegativeParametrizer
+from models.parametrizers import NonNegativeParametrizer
 
 class GDN(nn.Module):
     r"""Generalized Divisive Normalization layer.

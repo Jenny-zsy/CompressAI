@@ -13,9 +13,9 @@ from builtins import print, super
 import torch
 from torch import nn
 
-from gdn import GDN
-from masked_conv import MaskedConv2d
-from entropy_models import EntropyBottleneck, GaussianConditional
+from models.gdn import GDN
+from models.masked_conv import MaskedConv2d
+from models.entropy_models import EntropyBottleneck, GaussianConditional
 
 
 class ResidualBlock(nn.Module):

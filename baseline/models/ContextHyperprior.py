@@ -11,7 +11,7 @@ from torch import nn
 
 from models.gdn import GDN
 from models.masked_conv import MaskedConv2d
-from models.entropy import EntropyBottleneck, GaussianConditional
+from models.entropy_models import EntropyBottleneck, GaussianConditional
 
 
 class Encoder(nn.Module):
