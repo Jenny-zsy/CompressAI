@@ -12,16 +12,15 @@ from torch import optim
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
-from PIL import Image
 
 from ratedistortionloss import RateDistortionLoss
 from utils import AverageMeter
 
 from dataset import h5dataset, h5dataset_train, ImageFolder
-from dataset_hsi import CAVE_Dataset
 
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
+
 
 def configure_optimizers(net, args):
     """Separate parameters for the main optimizer and the auxiliary optimizer.
@@ -159,25 +158,20 @@ def train(args):
     if not os.path.exists(save_path):
         os.mkdir(save_path)
 
-    # load dataset
-    if args.train_data == 'ImageNet' or args.data == 'CLIC':
-        train_transforms = transforms.Compose(
-            [transforms.RandomCrop(args.patch_size),
-            transforms.ToTensor()])
+        # load dataset
+    train_transforms = transforms.Compose(
+        [transforms.RandomCrop(args.patch_size),
+         transforms.ToTensor()])
 
-        test_transforms = transforms.Compose(
-            [transforms.CenterCrop(args.patch_size),
-            transforms.ToTensor()])
-        train_dataset = ImageFolder(args.dataset,
-                                    split="train",
-                                    transform=train_transforms)
-        valid_dataset = ImageFolder(args.dataset,
+    test_transforms = transforms.Compose(
+        [transforms.CenterCrop(args.patch_size),
+         transforms.ToTensor()])
+    train_dataset = ImageFolder(args.dataset,
+                                split="train",
+                                transform=train_transforms)
+    valid_dataset = ImageFolder(args.dataset,
                                 split="test",
                                 transform=test_transforms)
-    elif args.train_data == 'CAVE':
-        path = '/data1/zhaoshuyi/Datasets/CAVE/hsi/'
-        train_dataset = CAVE_Dataset(path, args.patch_size, args.patch_size/2, mode='train')
-        valid_dataset = CAVE_Dataset(path, args.patch_size, mode='valid')
     #train_dataset = h5dataset(mode="train", h5path='./data/train_{}.h5'.format(args.train_data))
     #test_dataset = h5dataset( mode="valid", h5path='./data/valid_CLIC.h5')
 
@@ -199,7 +193,7 @@ def train(args):
                                   channel_M=args.channel_M)
     elif args.model == 'cheng2020':
         model = Cheng2020Attention(channel_N=args.channel_N,
-                                  channel_M=args.channel_M)
+                                   channel_M=args.channel_M)
 
     criterion = RateDistortionLoss(args.lmbda)
     criterion.cuda()
@@ -239,8 +233,8 @@ def train(args):
         train_loss = train_epoch(args, model, criterion, optimizer,
                                  aux_optimizer, train_dataloader, epoch,
                                  args.epochs, f)
-        valid_loss = test_epoch(args, model, criterion, valid_dataloader, epoch,
-                               f)
+        valid_loss = test_epoch(args, model, criterion, valid_dataloader,
+                                epoch, f)
         lr_scheduler.step(valid_loss)
 
         train_loss_sum.append(train_loss)
@@ -279,13 +273,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--train_data',
                         type=str,
-                        choices=['ImageNet', 'CLIC', 'CAVE'],
+                        choices=['ImageNet', 'CLIC'],
                         default='CLIC',
                         help='data for training')
-    parser.add_argument("-d",
-                        "--dataset",
-                        type=str,
-                        help="Training dataset")
+    parser.add_argument("-d", "--dataset", type=str, help="Training dataset")
     parser.add_argument('--model',
                         type=str,
                         default='mbt',

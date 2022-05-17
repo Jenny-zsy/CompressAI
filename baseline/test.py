@@ -13,6 +13,7 @@ from collections import defaultdict
 from images.plot import imsave
 
 from dataset import TestDataset
+from dataset_hsi import CAVE_Dataset
 
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
@@ -112,8 +113,7 @@ if __name__ == "__main__":
     USE_CUDA = torch.cuda.is_available()
     args.device = torch.device("cuda:0" if USE_CUDA else "cpu")
 
-    if args.test_data == 'Kodak':
-        img_path = "/data1/zhaoshuyi/AIcompress/compression_Liu/data/images/"
+    img_path = "/data1/zhaoshuyi/AIcompress/compression_Liu/data/images/"
     test_dataset = TestDataset(data_dir=img_path)
     test_loader = DataLoader(dataset=test_dataset,
                              shuffle=False,
@@ -122,7 +122,7 @@ if __name__ == "__main__":
 
     model_path = args.model_path
     if args.model == 'mbt':
-        model = ContextHyperprior(channel_N=args.channel_N, channel_M=args.channel_M)
+        model = ContextHyperprior( channel_N=args.channel_N, channel_M=args.channel_M)
     else:
         model = Cheng2020Attention(channel_N=args.channel_N, channel_M=args.channel_M)
     results = defaultdict(list)
