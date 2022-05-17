@@ -11,47 +11,46 @@ def Im2Patch(img, win, stride=1):
     """
     crop images
 
-    return: imgs with shape(channel, patch_size, patch_size, num)
+    return: imgs with shape(patch_size, patch_size, channel, num)
     """
     k = 0
-    endc = img.shape[0]
-    endw = img.shape[1]
-    endh = img.shape[2]
-    patch = img[:, 0:endw - win + 0 + 1:stride, 0:endh - win + 0 + 1:stride]
-    TotalPatNum = patch.shape[1] * patch.shape[2]
-    Y = np.zeros([endc, win * win, TotalPatNum], np.float32)
+    endw = img.shape[0]
+    endh = img.shape[1]
+    endc = img.shape[2]
+
+    patch = img[0:endw - win + 0 + 1:stride, 0:endh - win + 0 + 1:stride, :]
+    TotalPatNum = patch.shape[0] * patch.shape[1]
+    Y = np.zeros([win * win, TotalPatNum, endc], np.uint8)
     for i in range(win):
         for j in range(win):
-            patch = img[:, i:endw - win + i + 1:stride, j:endh - win + j + 1:stride]
-            Y[:, k, :] = np.array(patch[:]).reshape(endc, TotalPatNum)
+            patch = img[i:endw - win + i + 1:stride, j:endh - win + j + 1:stride, :]
+            Y[k, :, :] = np.array(patch[:]).reshape(TotalPatNum, endc)
             k = k + 1
-    return Y.reshape([endc, win, win, TotalPatNum])
+    return Y.reshape([win, win, endc, TotalPatNum])
 
-def gen_data_from_list(path, txt, patch_size, stride, num):
-    global toTensor, h5f
+def gen_data_from_list(path, txt, patch_size, stride):
+    global toTensor, save_path
 
-    patch = 0
+    patch_num = 0
     list = np.loadtxt(txt, dtype=np.str)
-    for i in range(len(list)):
+    for pic in range(len(list)):
 
-        if num == 0:
-            break
-
-        img_path = os.path.join(path, list[i][0])
+        img_path = os.path.join(path, list[pic][0])
+        print(img_path)
         img = Image.open(img_path).convert("RGB")
-        img = toTensor(img)
+        img.save(os.path.join(save_path, 'test.png'))
+        h, w = img.size
+        #img = np.array(img)
 
-        if img.shape[1] < patch_size or img.shape[2] < patch_size:
+        if h < patch_size or w < patch_size:
             continue
-        num = num - 1
         
-        patches = Im2Patch(img, patch_size, stride)
-        patch_num = patches.shape[3]
-        print('{} has {} samples after patch'.format(list[i][0], patch_num))
-
-        for j in range(patch_num):
-            h5f.create_dataset(str(patch), data=patches[:,:,:,j], dtype=np.float32)
-            patch += 1
+        for i in range(0, h-stride+1, stride):
+            for j in range(0, w-stride+1, stride):
+                patch_num += 1
+                #print(i, j, i+patch_size, j+patch_size)
+                patch = img.crop((i, j, i+patch_size, j+patch_size))
+                patch.save(os.path.join(save_path, '{}.png'.format(patch_num)))
                 
     print('{} samples\n'.format(patch))
 
@@ -99,11 +98,12 @@ def gen_data(path, patch_size, stride, mode='train'):
 if __name__ == "__main__":
 
     toTensor=transforms.ToTensor()# 实例化一个toTensor
-    h5f = h5py.File('./data/train_ImageNet.h5', 'w')
+    #h5f = h5py.File('./data/train_ImageNet.h5', 'w')
 
     #path = '/data1/zhaoshuyi/Datasets/CLIC2020/'
     #path = '/data1/zhaoshuyi/Datasets/COCO/train2017/'
     path = '/data1/langzhiqiang/ImageNet_ILSVRC2012/train/'
+    save_path = '/data1/zhaoshuyi/Datasets/ImageNet/compress/'
     txt = './data/train.txt'
-    gen_data_from_list(path=path, txt=txt, patch_size=256, stride=256, num=8000)
-    h5f.close()
+    gen_data_from_list(path=path, txt=txt, patch_size=256, stride=256)
+    #h5f.close()

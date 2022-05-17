@@ -77,9 +77,15 @@ class CAVE_Dataset(data.Dataset):
                     sample = copy.deepcopy(np.roll(sample, int(sample.shape[2] / 2), 2))
         
         sample = torch.from_numpy(sample).type(torch.FloatTensor)
-        print(int(self.patch_num**2*len(self.filelist)*Aug))
         #print(sample.shape,mask.shape)
-        return sample
+        if self.mode == 'test':
+            return {
+                'data': sample,
+                'name': file_name.split('/')[-1]
+            }
+        else:
+            return sample
+
 
 
     def __len__(self):
