@@ -41,30 +41,39 @@ def test_checkpoint(model, test_loader, args):
                 for likelihoods in out["likelihoods"].values())
             sumBpp += bpp
 
-            x_hat = out["x_hat"]
-            Metric = iv.spectra_metric(img.squeeze().permute(1,2,0).cpu().numpy(), x_hat.squeeze().permute(1,2,0).cpu().numpy())
-            PSNR = Metric.PSNR()
-            MS_SSIM = Metric.SSIM()
-            SAM = Metric.SAM()
-            MS_SSIM_DB = -10 * (np.log(1 - MS_SSIM) / np.log(10))
+            x_hat = out["x_hat"].squeeze()
+
+            '''--------------------
+            plot reconstructed_image and residual_image
+            --------------------'''
+            if args.ifplot and args.checkpoint == args.epochs:
+                save_path = os.path.join(
+                    model_path, "checkpoint{}".format(args.checkpoint))
+                if not os.path.exists(save_path):
+                    os.mkdir(save_path)
+                imsave(x_hat, img.squeeze(), save_path, i)
+
+            '''--------------------
+            compute metric: PSNR, MS-SSIM, SAM
+            --------------------'''
+            x_hat = x_hat.permute(1,2,0).cpu().numpy()
+            img = img.squeeze().permute(1,2,0).cpu().numpy()
+            #PSNR = psnr(img, x_hat)
+            Metric = iv.spectra_metric(img, x_hat)
+            PSNR =  Metric.PSNR()
+            MS_SSIM =  Metric.SSIM()
+            MS_SSIM_DB = -10 * (np.log(1-MS_SSIM) / np.log(10))
+            SAM =  Metric.SAM()
 
             sumPsnr += PSNR
             sumMsssim += MS_SSIM.item()
             sumMsssimDB += MS_SSIM_DB.item()
             sumSAM += SAM
-
+            
             print("img {} psnr:{:.6f} ms-ssim:{:.6f} ms-ssim-DB:{:.6f} sam:{:.4f} bpp:{:.6f}".format(
                 name, PSNR, MS_SSIM, MS_SSIM_DB, SAM, bpp.item()))
             #f.write("img{} psnr:{:.6f} ms-ssim:{:.6f} bpp:{:.6f}\n".format(i+1, PSNR, MS_SSIM, bpp.item()))
-            '''--------------------
-            plot reconstructed_image and residual_image
-            --------------------'''
-            if args.ifplot and args.epochs==args.checkpoint:
-                save_path = os.path.join(
-                    model_path, "checkpoint{}".format(args.checkpoint))
-                if not os.path.exists(save_path):
-                    os.mkdir(save_path)
-                imsave(x_hat, img, save_path, name)
+           
 
     print("Average psnr:{:.6f} ms-ssim:{:.6f} ms-ssim-DB:{:.6f} sam{:.4f} bpp:{:.6f}".format(
         sumPsnr / len(test_loader), sumMsssim / len(test_loader), sumMsssimDB / len(test_loader), sumSAM / len(test_loader), 
