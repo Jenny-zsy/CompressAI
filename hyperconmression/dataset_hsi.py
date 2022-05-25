@@ -23,7 +23,6 @@ class CAVE_Dataset(data.Dataset):
 
     def __getitem__(self, Index):
 
-
         patch_size = self.patch_size
         stride = self.stride
         patch_num = self.patch_num

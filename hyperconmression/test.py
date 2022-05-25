@@ -13,7 +13,6 @@ from pytorch_msssim import ms_ssim
 from collections import defaultdict
 from images.plot import imsave
 
-from dataset import TestDataset
 from dataset_hsi import CAVE_Dataset
 
 from models.ContextHyperprior import ContextHyperprior
@@ -28,13 +27,10 @@ def test_checkpoint(model, test_loader, args):
         sumMsssim = 0
         sumMsssimDB = 0
         sumSAM = 0
-
-        for i, img in enumerate(test_loader):
-            img = img.to(args.device)
-            name = ''.join(data['name'])
-
+        for i, data in enumerate(test_loader):
+            img = data['data'].to(args.device)
             out = model(img)
-
+            name = ''.join(data['name'])
             num_pixels = img.size(2) * img.size(3)
             bpp = sum(
                 (torch.log(likelihoods).sum() / (-math.log(2) * num_pixels))
@@ -69,11 +65,11 @@ def test_checkpoint(model, test_loader, args):
             sumMsssim += MS_SSIM.item()
             sumMsssimDB += MS_SSIM_DB.item()
             sumSAM += SAM
-            
+
             print("img {} psnr:{:.6f} ms-ssim:{:.6f} ms-ssim-DB:{:.6f} sam:{:.4f} bpp:{:.6f}".format(
                 name, PSNR, MS_SSIM, MS_SSIM_DB, SAM, bpp.item()))
             #f.write("img{} psnr:{:.6f} ms-ssim:{:.6f} bpp:{:.6f}\n".format(i+1, PSNR, MS_SSIM, bpp.item()))
-           
+            
 
     print("Average psnr:{:.6f} ms-ssim:{:.6f} ms-ssim-DB:{:.6f} sam{:.4f} bpp:{:.6f}".format(
         sumPsnr / len(test_loader), sumMsssim / len(test_loader), sumMsssimDB / len(test_loader), sumSAM / len(test_loader), 
@@ -105,23 +101,18 @@ class MyEncoder(json.JSONEncoder):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Process some integers.')
-    parser.add_argument('--model_path',
-                        required=True,
-                        help='checkpoint path')
     parser.add_argument('--model',
                         type=str,
                         default='mbt',
                         help='Model architecture')
+    parser.add_argument('--test_data', default='CAVE', help='test dataset')
+    parser.add_argument('--model_path', default="/data1/zhaoshuyi/AIcompress/baseline/results/lr0.0001_bs32_lambda0.01/", help='checkpoint path')
     parser.add_argument('--channel_N', type=int, default=128)
     parser.add_argument('--channel_M', type=int, default=192)
-    parser.add_argument('--test_data', default='CAVE', help='test dataset')
     parser.add_argument('--epochs',
                         type=int,
                         default=200,
                         help='number of epoch for eval')
-    parser.add_argument('--checkpoint',
-                        type=int,
-                        default=200)
     parser.add_argument('--gpu', default="0")
     parser.add_argument('--ifplot', default=False)
     args = parser.parse_args()
@@ -132,9 +123,10 @@ if __name__ == "__main__":
     args.device = torch.device("cuda:0" if USE_CUDA else "cpu")
 
     if args.test_data == 'CAVE':
-        img_path = '/data1/zhaoshuyi/Datasets/CAVE/hsi/'
-        test_dataset = CAVE_Dataset(img_path, 512, 512, False, 'test')
         bands = 31
+        img_path = '/data1/zhaoshuyi/Datasets/CAVE/hsi/'
+        test_dataset = CAVE_Dataset(img_path,512, 512, False, 'test')
+        #print('test')
     test_loader = DataLoader(dataset=test_dataset,
                              shuffle=False,
                              batch_size=1,
@@ -143,16 +135,36 @@ if __name__ == "__main__":
     model_path = args.model_path
     if args.model == 'mbt':
         model = ContextHyperprior(channel_in=bands,
-                                  channel_N=args.channel_N,
-                                  channel_M=args.channel_M,
-                                  channel_out=bands)
-    else:
-        model = Cheng2020Attention(channel_in=bands,
-                                   channel_N=args.channel_N,
-                                   channel_M=args.channel_M,
-                                   channel_out=bands)
+        channel_N=args.channel_N, channel_M=args.channel_M, channel_out=bands)
+    elif  args.model == 'cheng2020':
+        model = Cheng2020Attention(channel_in=bands,channel_N=args.channel_N, channel_M=args.channel_M, channel_out= bands)
+    elif args.model == 'HyperCompress1':
+        from models.hypercompress import HyperCompress1
+        model = HyperCompress1(channel_in=bands,
+                                channel_N=args.channel_N,
+                                channel_M=args.channel_M,
+                                channel_out=bands)
+    elif args.model == 'HyperCompress2':
+        from models.hypercompress2 import HyperCompress2
+        model = HyperCompress2(channel_in=bands,
+                                channel_N=args.channel_N,
+                                channel_M=args.channel_M,
+                                channel_out=bands)
+    elif args.model == 'HyperCompress3':
+        from models.hypercompress3 import HyperCompress3
+        model = HyperCompress3(channel_in=bands,
+                                channel_N=args.channel_N,
+                                channel_M=args.channel_M,
+                                channel_out=bands)
+    elif args.model == 'HyperCompress4':
+        from models.hypercompress4 import HyperCompress4
+        model = HyperCompress4(channel_in=bands,
+                                channel_N=args.channel_N,
+                                channel_M=args.channel_M,
+                                channel_out=bands)
+
     results = defaultdict(list)
-    for i in range(0, args.epochs + 1, 20):
+    for i in range(0, args.epochs + 1, 100):
         if i == 0:
             continue
         checkpoint = torch.load(
@@ -161,10 +173,10 @@ if __name__ == "__main__":
         model.to(args.device)
         args.checkpoint = i
 
-        metrics = test_checkpoint( model, test_loader, args)
+        metrics = test_checkpoint(model, test_loader, args)
         for k, v in metrics.items():
             results[k].append(v)
-
+        
         torch.cuda.empty_cache()
 
     description = (args.test_data)
@@ -173,9 +185,7 @@ if __name__ == "__main__":
         "description": f"Inference ({description})",
         "results": results,
     }
-
-    with open(os.path.join(model_path, '{}.json'.format(args.test_data)),
-              "w",
-              encoding="utf-8") as json_file:
+    
+    with open(os.path.join(model_path, '{}.json'.format(args.test_data)), "w", encoding="utf-8") as json_file:
         json_dict = json.dump(output, json_file)
     print(json.dumps(output, indent=2))

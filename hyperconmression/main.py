@@ -19,6 +19,7 @@ from dataset_hsi import CAVE_Dataset
 
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
+from models.hypercompress import HyperCompress1
 
 
 def configure_optimizers(net, args):
@@ -192,6 +193,29 @@ def train(args):
                                    channel_N=args.channel_N,
                                    channel_M=args.channel_M,
                                    channel_out=bands)
+    elif args.model == 'HyperCompress1':
+        model = HyperCompress1(channel_in=bands,
+                                channel_N=args.channel_N,
+                                channel_M=args.channel_M,
+                                channel_out=bands)
+    elif args.model == 'HyperCompress2':
+        from models.hypercompress2 import HyperCompress2
+        model = HyperCompress2(channel_in=bands,
+                                channel_N=args.channel_N,
+                                channel_M=args.channel_M,
+                                channel_out=bands)
+    elif args.model == 'HyperCompress3':
+        from models.hypercompress3 import HyperCompress3
+        model = HyperCompress3(channel_in=bands,
+                                channel_N=args.channel_N,
+                                channel_M=args.channel_M,
+                                channel_out=bands)
+    elif args.model == 'HyperCompress4':
+        from models.hypercompress4 import HyperCompress4
+        model = HyperCompress4(channel_in=bands,
+                                channel_N=args.channel_N,
+                                channel_M=args.channel_M,
+                                channel_out=bands)
 
     criterion = RateDistortionLoss(args.lmbda)
     criterion.cuda()
@@ -239,7 +263,7 @@ def train(args):
         valid_loss_sum.append(valid_loss)
 
         # save the model
-        if epoch % 10 == 9:
+        if epoch % 100 == 99:
             state = {
                 'epoch': epoch,
                 'state_dict': model.module.state_dict() if gpu_num > 1 else model.state_dict(),
@@ -284,17 +308,17 @@ if __name__ == "__main__":
     parser.add_argument("-n",
                         "--num-workers",
                         type=int,
-                        default=8,
+                        default=4,
                         help="Dataloaders threads (default: %(default)s)")
     parser.add_argument('--model',
                         type=str,
                         default='cheng2020',
                         help='Model architecture')
-    parser.add_argument('--channel_N', type=int, default=128)
+    parser.add_argument('--channel_N', type=int, default=192)
     parser.add_argument('--channel_M', type=int, default=192)
     parser.add_argument('--epochs',
                         type=int,
-                        default=200,
+                        default=1000,
                         help='number of epoch for training')
     parser.add_argument('--batch_size',
                         type=int,
