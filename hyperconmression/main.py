@@ -12,7 +12,7 @@ from torch import optim
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 
-from ratedistortionloss import RateDistortionLoss
+from loss import  RateDistortionLoss, RateDistortion_SAM_Loss
 from utils import AverageMeter
 
 from dataset_hsi import CAVE_Dataset
@@ -21,6 +21,19 @@ from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
 from models.hypercompress import HyperCompress1
 
+def Loss_SAM(im_true, im_fake):
+    N = im_true.size()[0]
+    C = im_true.size()[1]
+    H = im_true.size()[2]
+    W = im_true.size()[3]
+    nom = torch.sum( torch.mul(im_true, im_fake), dim=1)
+    denom1 = torch.sqrt( torch.sum( torch.pow(im_true,2), dim=1))
+    denom2 = torch.sqrt( torch.sum( torch.pow(im_fake,2), dim=1))
+    print(denom2)
+    sam = torch.acos( torch.div(nom, torch.mul(denom1, denom2)))
+    sam = torch.mul(torch.div(sam, np.pi), 180)
+    sam = torch.div( torch.sum(sam), N*H*W)
+    return sam
 
 def configure_optimizers(net, args):
     """Separate parameters for the main optimizer and the auxiliary optimizer.
@@ -92,12 +105,14 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
                     epoch, epochs, batch, len(train_dataloader)).ljust(30),
                 'Loss: %.4f'.ljust(14) % (out_criterion["loss"]),
                 'mse_loss: %.6f'.ljust(19) % (out_criterion["mse_loss"]),
+                'sam_loss: %.4f'.ljust(19) % (out_criterion["sam_loss"]),
                 'bpp_loss: %.4f'.ljust(17) % (out_criterion["bpp_loss"]),
                 'aux_loss: %.2f'.ljust(17) % (aux_loss.item()))
             f.write('Epoch: {}/{}:[{}]/[{}]'.format(
                 epoch, epochs, batch, len(train_dataloader)).ljust(30))
             f.write('Loss: %.4f'.ljust(14) % (out_criterion["loss"]))
             f.write('mse_loss: %.6f'.ljust(19) % (out_criterion["mse_loss"]))
+            f.write('sam_loss: %.4f'.ljust(19) % (out_criterion["sam_loss"]))
             f.write('bpp_loss: %.4f'.ljust(17) % (out_criterion["bpp_loss"]))
             f.write('aux_loss: %.2f\n'.ljust(17) % (aux_loss.item()))
 
@@ -110,7 +125,8 @@ def test_epoch(args, model, criterion, test_dataloader, epoch, f):
     loss = AverageMeter()
     bpp_loss = AverageMeter()
     mse_loss = AverageMeter()
-
+    sam_loss = AverageMeter()
+    
     with torch.no_grad():
         for inputs in test_dataloader:
             inputs = Variable(inputs.to(args.device))
@@ -118,17 +134,23 @@ def test_epoch(args, model, criterion, test_dataloader, epoch, f):
             out_criterion = criterion(out, inputs)
 
             bpp_loss.update(out_criterion["bpp_loss"])
-            loss.update(out_criterion["loss"])
             mse_loss.update(out_criterion["mse_loss"])
+            if out_criterion["sam_loss"] != nan:
+                sam_loss.update(out_criterion["sam_loss"])
+                loss.update(out_criterion["loss"])
+            
+    
 
     f.write('Epoch {} valid '.format(epoch).ljust(30))
     f.write('Loss: %.4f'.ljust(14) % (loss.avg))
     f.write('mse_loss: %.6f'.ljust(19) % (mse_loss.avg))
+    f.write('sam_loss: %.6f'.ljust(19) % (sam_loss.avg))
     f.write('bpp_loss: %.4f\n'.ljust(17) % (bpp_loss.avg))
 
     print('Epoch {} valid '.format(epoch).ljust(30),
           'Loss: %.4f'.ljust(14) % (loss.avg),
           'mse_loss: %.6f'.ljust(19) % (mse_loss.avg),
+          'sam_loss: %.4f'.ljust(19) % (sam_loss.avg),
           'bpp_loss: %.4f'.ljust(17) % (bpp_loss.avg))
 
     return loss.avg
@@ -151,9 +173,9 @@ def train(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = './results/{}_{}_chN{}_chM{}_lambda{}_bs{}_lr{}/'.format(
+    save_path = './results/{}_{}_chN{}_chM{}_lambda{}_beta{}_bs{}_lr{}/'.format(
         args.model, args.train_data, args.channel_N, args.channel_M,
-        args.lmbda, args.batch_size * gpu_num, args.lr)
+        args.lmbda, args.beta, args.batch_size * gpu_num, args.lr)
     if not os.path.exists(save_path):
         os.mkdir(save_path)
 
@@ -217,7 +239,8 @@ def train(args):
                                 channel_M=args.channel_M,
                                 channel_out=bands)
 
-    criterion = RateDistortionLoss(args.lmbda)
+    #criterion = RateDistortionLoss(args.lmbda)
+    criterion = RateDistortion_SAM_Loss(args.lmbda, args.beta)
     criterion.cuda()
 
     optimizer, aux_optimizer = configure_optimizers(model, args)
@@ -263,7 +286,7 @@ def train(args):
         valid_loss_sum.append(valid_loss)
 
         # save the model
-        if epoch % 100 == 99:
+        if epoch % 50 == 49:
             state = {
                 'epoch': epoch,
                 'state_dict': model.module.state_dict() if gpu_num > 1 else model.state_dict(),
@@ -335,6 +358,14 @@ if __name__ == "__main__":
     parser.add_argument("--aux_lr",
                         default=1e-3,
                         help="Auxiliary loss learning rate.")
+    parser.add_argument("--lmbda",
+                        type=float,
+                        default=1e-2,
+                        help="Bit-rate distortion parameter")
+    parser.add_argument("--beta",
+                        type=float,
+                        default=1e-2,
+                        help="sam loss parameter")
     parser.add_argument('--continue_training',
                         type=bool,
                         default=False,
@@ -354,10 +385,6 @@ if __name__ == "__main__":
                         help="how much to reduce the lr each time")
     parser.add_argument("--gpus", type=str, default="0", help='path log files')
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--lmbda",
-                        type=float,
-                        default=1e-2,
-                        help="Bit-rate distortion parameter")
     args = parser.parse_args()
 
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
