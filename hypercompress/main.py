@@ -12,7 +12,7 @@ from torch import optim
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 
-from ratedistortionloss import  RateDistortionLoss, RateDistortion_SAM_Loss
+from ratedistortionloss import RateDistortionLoss, RateDistortion_SAM_Loss
 from utils import AverageMeter
 
 from dataset_hsi import CAVE_Dataset
@@ -20,6 +20,11 @@ from dataset_hsi import CAVE_Dataset
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
 from models.hypercompress import HyperCompress1
+
+try:
+    from tensorboardX import SummaryWriter
+except ModuleNotFoundError:
+    from torch.utils.tensorboard import SummaryWriter
 
 
 def configure_optimizers(net, args):
@@ -57,13 +62,17 @@ def configure_optimizers(net, args):
 
 
 def train_epoch(args, model, criterion, optimizer, aux_optimizer,
-                train_dataloader, epoch, epochs, f):
+                train_dataloader, epoch, epochs, f, writter):
     """
         Train model for one epoch
-        """
+    """
+
     model.train()  # Set model to training mode
 
     loss = AverageMeter()
+    bpp_loss = AverageMeter()
+    mse_loss = AverageMeter()
+    sam_loss = AverageMeter()
     for batch, inputs in enumerate(train_dataloader):
         inputs = Variable(inputs.to(args.device))
 
@@ -84,6 +93,9 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
         aux_optimizer.step()
 
         loss.update(out_criterion["loss"])
+        bpp_loss.update(out_criterion["bpp_loss"])
+        mse_loss.update(out_criterion["mse_loss"])
+        sam_loss.update(out_criterion["sam_loss"])
 
         # print out loss and visualise results
         if batch % 10 == 0:
@@ -103,7 +115,7 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
             f.write('bpp_loss: %.4f'.ljust(17) % (out_criterion["bpp_loss"]))
             f.write('aux_loss: %.2f\n'.ljust(17) % (aux_loss.item()))
 
-    return loss.avg
+    return loss.avg, mse_loss.avg, bpp_loss.avg, sam_loss.avg
 
 
 def test_epoch(args, model, criterion, test_dataloader, epoch, f):
@@ -124,8 +136,6 @@ def test_epoch(args, model, criterion, test_dataloader, epoch, f):
             mse_loss.update(out_criterion["mse_loss"])
             sam_loss.update(out_criterion["sam_loss"])
             loss.update(out_criterion["loss"])
-            
-    
 
     f.write('Epoch {} valid '.format(epoch).ljust(30))
     f.write('Loss: %.4f'.ljust(14) % (loss.avg))
@@ -139,7 +149,7 @@ def test_epoch(args, model, criterion, test_dataloader, epoch, f):
           'sam_loss: %.4f'.ljust(19) % (sam_loss.avg),
           'bpp_loss: %.4f'.ljust(17) % (bpp_loss.avg))
 
-    return loss.avg
+    return loss.avg, mse_loss.avg, bpp_loss.avg, sam_loss.avg
 
 
 def plot(y1, y2, label, outf):
@@ -155,7 +165,7 @@ def plot(y1, y2, label, outf):
     plt.close("all")
 
 
-def train(args):
+def main(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
@@ -164,6 +174,7 @@ def train(args):
         args.lmbda, args.beta, args.batch_size * gpu_num, args.lr)
     if not os.path.exists(save_path):
         os.mkdir(save_path)
+    writter = SummaryWriter(os.path.join('tensorboard', save_path.split('/')[-2]))
 
     # load dataset
     if args.train_data == 'CAVE':
@@ -172,7 +183,7 @@ def train(args):
         train_dataset = CAVE_Dataset(path,
                                      args.patch_size,
                                      args.stride,
-                                     data_aug = True if args.aug == 'aug' else False, 
+                                     data_aug=True if args.aug == 'aug' else False,
                                      mode='train')
         valid_dataset = CAVE_Dataset(path, args.patch_size, mode='valid')
 
@@ -201,27 +212,27 @@ def train(args):
                                    channel_out=bands)
     elif args.model == 'HyperCompress1':
         model = HyperCompress1(channel_in=bands,
-                                channel_N=args.channel_N,
-                                channel_M=args.channel_M,
-                                channel_out=bands)
+                               channel_N=args.channel_N,
+                               channel_M=args.channel_M,
+                               channel_out=bands)
     elif args.model == 'HyperCompress2':
         from models.hypercompress2 import HyperCompress2
         model = HyperCompress2(channel_in=bands,
-                                channel_N=args.channel_N,
-                                channel_M=args.channel_M,
-                                channel_out=bands)
+                               channel_N=args.channel_N,
+                               channel_M=args.channel_M,
+                               channel_out=bands)
     elif args.model == 'HyperCompress3':
         from models.hypercompress3 import HyperCompress3
         model = HyperCompress3(channel_in=bands,
-                                channel_N=args.channel_N,
-                                channel_M=args.channel_M,
-                                channel_out=bands)
+                               channel_N=args.channel_N,
+                               channel_M=args.channel_M,
+                               channel_out=bands)
     elif args.model == 'HyperCompress4':
         from models.hypercompress4 import HyperCompress4
         model = HyperCompress4(channel_in=bands,
-                                channel_N=args.channel_N,
-                                channel_M=args.channel_M,
-                                channel_out=bands)
+                               channel_N=args.channel_N,
+                               channel_M=args.channel_M,
+                               channel_out=bands)
 
     #criterion = RateDistortionLoss(args.lmbda)
     criterion = RateDistortion_SAM_Loss(args.lmbda, args.beta)
@@ -259,25 +270,40 @@ def train(args):
     for epoch in range(start_epoch, args.epochs):
 
         print("第%d个epoch的学习率：%f" % (epoch, optimizer.param_groups[0]['lr']))
-        train_loss = train_epoch(args, model, criterion, optimizer,
-                                 aux_optimizer, train_dataloader, epoch,
-                                 args.epochs, f)
-        valid_loss = test_epoch(args, model, criterion, valid_dataloader,
-                                epoch, f)
+        writter.add_scalar('lr', optimizer.param_groups[0]['lr'], epoch)
+
+        train_loss, train_mse, train_bpp, train_sam = train_epoch(args, model, criterion, optimizer,
+                                                                  aux_optimizer, train_dataloader, epoch,
+                                                                  args.epochs, f, writter)
+        valid_loss, valid_mse, valid_bpp, valid_sam = test_epoch(args, model, criterion, valid_dataloader,
+                                                                 epoch, f)
         lr_scheduler.step(valid_loss)
 
         train_loss_sum.append(train_loss.cpu().detach().numpy())
         valid_loss_sum.append(valid_loss.cpu().detach().numpy())
 
+        writter.add_scalars('loss', {'train': train_loss.cpu().detach().numpy(),
+                                     'valid': valid_loss.cpu().detach().numpy()}, epoch)
+        writter.add_scalars('bpp_loss', {'train': train_bpp.cpu().detach().numpy(),
+                                     'valid': valid_bpp.cpu().detach().numpy()}, epoch)
+        writter.add_scalars('mse_loss', {'train': train_mse.cpu().detach().numpy(),
+                                     'valid': valid_mse.cpu().detach().numpy()}, epoch)
+        writter.add_scalars('sam_loss', {'train': train_sam.cpu().detach().numpy(),
+                                     'valid': valid_sam.cpu().detach().numpy()}, epoch)                           
+
         # save the model
+        state = {
+            'epoch': epoch,
+            'state_dict': model.module.state_dict() if gpu_num > 1 else model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            "aux_optimizer": aux_optimizer.state_dict(),
+            "lr_scheduler": lr_scheduler.state_dict(),
+        }
+        torch.save(
+            state,
+            os.path.join(save_path, "lastcheckpoint.pth"))
+
         if epoch % 50 == 49:
-            state = {
-                'epoch': epoch,
-                'state_dict': model.module.state_dict() if gpu_num > 1 else model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                "aux_optimizer": aux_optimizer.state_dict(),
-                "lr_scheduler": lr_scheduler.state_dict(),
-            }
             torch.save(
                 state,
                 os.path.join(save_path, "checkpoint_{}.pth".format(epoch + 1)))
@@ -292,6 +318,7 @@ def train(args):
             state,
             os.path.join(save_path, "checkpoint_{}.pth".format(epoch + 1)))'''
         plot(train_loss_sum, valid_loss_sum, 'loss', save_path)
+        writter.close()
 
 
 if __name__ == "__main__":
@@ -301,8 +328,8 @@ if __name__ == "__main__":
                         choices=['CAVE'],
                         default='CAVE',
                         help='data for training')
-    parser.add_argument('--aug', 
-                        type=str, 
+    parser.add_argument('--aug',
+                        type=str,
                         default='aug',
                         help='whether to augment data.')
     parser.add_argument("--patch-size",
@@ -378,5 +405,5 @@ if __name__ == "__main__":
     args.device = torch.device("cuda:0" if USE_CUDA else "cpu")
     print(args)
 
-    train(args)
+    main(args)
     print("Done.")
