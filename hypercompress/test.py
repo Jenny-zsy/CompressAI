@@ -126,7 +126,7 @@ if __name__ == "__main__":
 
     if args.test_data == 'CAVE':
         bands = 31
-        img_path = '/data3/zhaoshuyi/Datasets/CAVE/hsi/'
+        img_path = '/data1/zhaoshuyi/Datasets/CAVE/hsi/'
         test_dataset = CAVE_Dataset(img_path,512, 512, False, 'test')
         #print('test')
     test_loader = DataLoader(dataset=test_dataset,

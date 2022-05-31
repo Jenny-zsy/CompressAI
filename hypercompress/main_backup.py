@@ -12,7 +12,7 @@ from torch import optim
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 
-from ratedistortionloss import  RateDistortionLoss, RateDistortion_SAM_Loss
+from ratedistortionloss import RateDistortionLoss, RateDistortion_SAM_Loss
 from utils import AverageMeter
 
 from dataset_hsi import CAVE_Dataset
@@ -20,7 +20,6 @@ from dataset_hsi import CAVE_Dataset
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
 from models.hypercompress import HyperCompress1
-
 
 
 def configure_optimizers(net, args):
@@ -119,8 +118,6 @@ def test_epoch(args, model, criterion, test_dataloader, epoch, f):
             bpp_loss.update(out_criterion["bpp_loss"])
             mse_loss.update(out_criterion["mse_loss"])
             loss.update(out_criterion["loss"])
-            
-    
 
     f.write('Epoch {} valid '.format(epoch).ljust(30))
     f.write('Loss: %.4f'.ljust(14) % (loss.avg))
@@ -160,12 +157,12 @@ def train(args):
 
     # load dataset
     if args.train_data == 'CAVE':
-        path = '/data3/zhaoshuyi/Datasets/CAVE/hsi/'
+        path = '/data1/zhaoshuyi/Datasets/CAVE/hsi/'
         bands = 31
         train_dataset = CAVE_Dataset(path,
                                      args.patch_size,
                                      args.stride,
-                                     data_aug = True if args.aug == 'aug' else False, 
+                                     data_aug=True if args.aug == 'aug' else False,
                                      mode='train')
         valid_dataset = CAVE_Dataset(path, args.patch_size, mode='valid')
     #train_dataset = h5dataset(mode="train", h5path='./data/train_{}.h5'.format(args.train_data))
@@ -196,27 +193,27 @@ def train(args):
                                    channel_out=bands)
     elif args.model == 'HyperCompress1':
         model = HyperCompress1(channel_in=bands,
-                                channel_N=args.channel_N,
-                                channel_M=args.channel_M,
-                                channel_out=bands)
+                               channel_N=args.channel_N,
+                               channel_M=args.channel_M,
+                               channel_out=bands)
     elif args.model == 'HyperCompress2':
         from models.hypercompress2 import HyperCompress2
         model = HyperCompress2(channel_in=bands,
-                                channel_N=args.channel_N,
-                                channel_M=args.channel_M,
-                                channel_out=bands)
+                               channel_N=args.channel_N,
+                               channel_M=args.channel_M,
+                               channel_out=bands)
     elif args.model == 'HyperCompress3':
         from models.hypercompress3 import HyperCompress3
         model = HyperCompress3(channel_in=bands,
-                                channel_N=args.channel_N,
-                                channel_M=args.channel_M,
-                                channel_out=bands)
+                               channel_N=args.channel_N,
+                               channel_M=args.channel_M,
+                               channel_out=bands)
     elif args.model == 'HyperCompress4':
         from models.hypercompress4 import HyperCompress4
         model = HyperCompress4(channel_in=bands,
-                                channel_N=args.channel_N,
-                                channel_M=args.channel_M,
-                                channel_out=bands)
+                               channel_N=args.channel_N,
+                               channel_M=args.channel_M,
+                               channel_out=bands)
 
     criterion = RateDistortionLoss(args.lmbda)
     #criterion = RateDistortion_SAM_Loss(args.lmbda, args.beta)
@@ -265,14 +262,18 @@ def train(args):
         valid_loss_sum.append(valid_loss.cpu().detach().numpy())
 
         # save the model
+        state = {
+            'epoch': epoch,
+            'state_dict': model.module.state_dict() if gpu_num > 1 else model.state_dict(),
+            'optimizer': optimizer.state_dict(),
+            "aux_optimizer": aux_optimizer.state_dict(),
+            "lr_scheduler": lr_scheduler.state_dict(),
+        }
+        torch.save(
+            state,
+            os.path.join(save_path, "lastcheckpoint.pth"))
+            
         if epoch % 50 == 49:
-            state = {
-                'epoch': epoch,
-                'state_dict': model.module.state_dict() if gpu_num > 1 else model.state_dict(),
-                'optimizer': optimizer.state_dict(),
-                "aux_optimizer": aux_optimizer.state_dict(),
-                "lr_scheduler": lr_scheduler.state_dict(),
-            }
             torch.save(
                 state,
                 os.path.join(save_path, "checkpoint_{}.pth".format(epoch + 1)))
@@ -296,8 +297,8 @@ if __name__ == "__main__":
                         choices=['CAVE'],
                         default='CAVE',
                         help='data for training')
-    parser.add_argument('--aug', 
-                        type=str, 
+    parser.add_argument('--aug',
+                        type=str,
                         default='aug',
                         help='whether to augment data.')
     parser.add_argument("--patch-size",
