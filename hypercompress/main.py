@@ -62,7 +62,7 @@ def configure_optimizers(net, args):
 
 
 def train_epoch(args, model, criterion, optimizer, aux_optimizer,
-                train_dataloader, epoch, epochs, f, writter):
+                train_dataloader, epoch, epochs, f):
     """
         Train model for one epoch
     """
@@ -274,7 +274,7 @@ def main(args):
 
         train_loss, train_mse, train_bpp, train_sam = train_epoch(args, model, criterion, optimizer,
                                                                   aux_optimizer, train_dataloader, epoch,
-                                                                  args.epochs, f, writter)
+                                                                  args.epochs, f)
         valid_loss, valid_mse, valid_bpp, valid_sam = test_epoch(args, model, criterion, valid_dataloader,
                                                                  epoch, f)
         lr_scheduler.step(valid_loss)
