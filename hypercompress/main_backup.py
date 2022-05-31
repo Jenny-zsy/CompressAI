@@ -265,7 +265,7 @@ def main(args):
 
         train_loss, train_mse, train_bpp = train_epoch(args, model, criterion, optimizer,
                                                                   aux_optimizer, train_dataloader, epoch,
-                                                                  args.epochs, f, writter)
+                                                                  args.epochs, f)
         valid_loss, valid_mse, valid_bpp = test_epoch(args, model, criterion, valid_dataloader,
                                                                  epoch, f)
         lr_scheduler.step(valid_loss)
