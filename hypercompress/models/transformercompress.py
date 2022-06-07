@@ -608,6 +608,14 @@ class SymmetricalTransFormer(nn.Module):
                 nn.init.constant_(m.bias, 0)
                 nn.init.constant_(m.weight, 1.0)
 
+    def aux_loss(self):
+        """Return the aggregated loss over the auxiliary entropy bottleneck
+        module(s).
+        """
+        aux_loss = sum(m.loss() for m in self.modules()
+                       if isinstance(m, EntropyBottleneck))
+        return aux_loss
+
     def forward(self, x):
         """Forward function."""
         x = self.patch_embed(x)
