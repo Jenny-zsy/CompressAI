@@ -19,7 +19,7 @@ from dataset_hsi import CAVE_Dataset
 
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
-from models.hypercompress import HyperCompress1
+from models.transformercompress import SymmetricalTransFormer
 
 try:
     from tensorboardX import SummaryWriter
@@ -210,7 +210,9 @@ def main(args):
                                    channel_N=args.channel_N,
                                    channel_M=args.channel_M,
                                    channel_out=bands)
-    elif args.model == 'HyperCompress1':
+    elif args.model == 'transformer':
+        model = SymmetricalTransFormer(channel_in=bands)
+    '''elif args.model == 'HyperCompress1':
         model = HyperCompress1(channel_in=bands,
                                channel_N=args.channel_N,
                                channel_M=args.channel_M,
@@ -232,7 +234,7 @@ def main(args):
         model = HyperCompress4(channel_in=bands,
                                channel_N=args.channel_N,
                                channel_M=args.channel_M,
-                               channel_out=bands)
+                               channel_out=bands)'''
 
     #criterion = RateDistortionLoss(args.lmbda)
     criterion = RateDistortion_SAM_Loss(args.lmbda, args.beta)

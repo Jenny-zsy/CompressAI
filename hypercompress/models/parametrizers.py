@@ -34,7 +34,7 @@ import torch.nn as nn
 
 from torch import Tensor
 
-from models.bound_ops import LowerBound
+from models.ops.bound_ops import LowerBound
 
 
 class NonNegativeParametrizer(nn.Module):

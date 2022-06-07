@@ -4,10 +4,8 @@ import numpy as np
 import torch.nn.functional as F
 
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
-# from models.gdn import GDN
-# from models.masked_conv import MaskedConv2d
-from entropy_models import EntropyBottleneck, GaussianConditional
-from ops.ops import ste_round
+from models.entropy_models import EntropyBottleneck, GaussianConditional
+from models.ops.ops import ste_round
 
 # From Balle's tensorflow compression examples
 SCALES_MIN = 0.11
@@ -380,15 +378,15 @@ class BasicLayer(nn.Module):
 
 
 class PatchEmbed(nn.Module):
-    def __init__(self, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None):
+    def __init__(self, patch_size=4, channel_in=3, embed_dim=96, norm_layer=None):
         super().__init__()
         patch_size = to_2tuple(patch_size)
         self.patch_size = patch_size
 
-        self.in_chans = in_chans
+        self.channel_in = channel_in
         self.embed_dim = embed_dim
 
-        self.proj = nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size)
+        self.proj = nn.Conv2d(channel_in, embed_dim, kernel_size=patch_size, stride=patch_size)
         if norm_layer is not None:
             self.norm = norm_layer(embed_dim)
         else:
@@ -417,7 +415,7 @@ class SymmetricalTransFormer(nn.Module):
     def __init__(self,
                  pretrain_img_size=256,
                  patch_size=2,
-                 in_chans=31,
+                 channel_in=31,
                  embed_dim=48,
                  depths=[2, 2, 6, 2],
                  num_heads=[3, 6, 12, 24],
@@ -445,7 +443,7 @@ class SymmetricalTransFormer(nn.Module):
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
-            patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim,
+            patch_size=patch_size, channel_in=channel_in, embed_dim=embed_dim,
             norm_layer=norm_layer if self.patch_norm else None)
 
         self.pos_drop = nn.Dropout(p=drop_rate)
@@ -685,7 +683,7 @@ class SymmetricalTransFormer(nn.Module):
         #print("x_hat: ", x_hat.shape)
         return {
             "x_hat": x_hat,
-            "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},
+            "likelihoods": {"y": y_likelihoods, "z": z_likelihoods},  
         }
 
 import math
