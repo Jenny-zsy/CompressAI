@@ -161,12 +161,12 @@ def main(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = '../results/{}_{}_chN{}_chM{}_lambda{}_bs{}_lr{}/'.format(
+    save_path = '../../compressresults/{}_{}_chN{}_chM{}_lambda{}_bs{}_lr{}/'.format(
         args.model, args.train_data, args.channel_N, args.channel_M,
         args.lmbda, args.batch_size * gpu_num, args.lr)
     if not os.path.exists(save_path):
         os.mkdir(save_path)
-    writter = SummaryWriter(os.path.join('../tensorboard', save_path.split('/')[-2]))
+    writter = SummaryWriter(os.path.join('../../compressresults/tensorboard', save_path.split('/')[-2]))
 
     # load dataset
     if args.train_data == 'CAVE':
