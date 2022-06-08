@@ -106,15 +106,15 @@ if __name__ == "__main__":
                         help='Model architecture')
     parser.add_argument('--test_data', default='CAVE', help='test dataset')
     parser.add_argument('--model_path', default="/data1/zhaoshuyi/AIcompress/baseline/results/lr0.0001_bs32_lambda0.01/", help='checkpoint path')
-    parser.add_argument('--channel_N', type=int, default=128)
+    parser.add_argument('--channel_N', type=int, default=192)
     parser.add_argument('--channel_M', type=int, default=192)
     parser.add_argument('--endepoch',
                         type=int,
-                        default=200)
+                        default=1000)
     parser.add_argument('--startepoch',
                         type=int,
                         default=0)
-    parser.add_argument('--epoch_stride', type=int, default=50)
+    parser.add_argument('--epoch_stride', type=int, default=100)
     parser.add_argument('--gpu', default="0")
     parser.add_argument('--ifplot', default=False)
     args = parser.parse_args()
@@ -140,30 +140,9 @@ if __name__ == "__main__":
         channel_N=args.channel_N, channel_M=args.channel_M, channel_out=bands)
     elif  args.model == 'cheng2020':
         model = Cheng2020Attention(channel_in=bands,channel_N=args.channel_N, channel_M=args.channel_M, channel_out= bands)
-    elif args.model == 'HyperCompress1':
-        from models.hypercompress import HyperCompress1
-        model = HyperCompress1(channel_in=bands,
-                                channel_N=args.channel_N,
-                                channel_M=args.channel_M,
-                                channel_out=bands)
-    elif args.model == 'HyperCompress2':
-        from models.hypercompress2 import HyperCompress2
-        model = HyperCompress2(channel_in=bands,
-                                channel_N=args.channel_N,
-                                channel_M=args.channel_M,
-                                channel_out=bands)
-    elif args.model == 'HyperCompress3':
-        from models.hypercompress3 import HyperCompress3
-        model = HyperCompress3(channel_in=bands,
-                                channel_N=args.channel_N,
-                                channel_M=args.channel_M,
-                                channel_out=bands)
-    elif args.model == 'HyperCompress4':
-        from models.hypercompress4 import HyperCompress4
-        model = HyperCompress4(channel_in=bands,
-                                channel_N=args.channel_N,
-                                channel_M=args.channel_M,
-                                channel_out=bands)
+    elif args.model == 'transformer':
+        from models.transformercompress import SymmetricalTransFormer
+        model = SymmetricalTransFormer(channel_in=bands)
 
     results = defaultdict(list)
     for i in range(args.startepoch, args.endepoch + 1, args.epoch_stride):

@@ -19,7 +19,7 @@ from dataset_hsi import CAVE_Dataset
 
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
-from models.hypercompress import HyperCompress1
+from models.transformercompress import SymmetricalTransFormer
 
 try:
     from tensorboardX import SummaryWriter
@@ -161,9 +161,9 @@ def main(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = './results/{}_{}_chN{}_chM{}_lambda{}_beta{}_bs{}_lr{}/'.format(
+    save_path = './results/{}_{}_chN{}_chM{}_lambda{}_bs{}_lr{}/'.format(
         args.model, args.train_data, args.channel_N, args.channel_M,
-        args.lmbda, args.beta, args.batch_size * gpu_num, args.lr)
+        args.lmbda, args.batch_size * gpu_num, args.lr)
     if not os.path.exists(save_path):
         os.mkdir(save_path)
     writter = SummaryWriter(os.path.join('tensorboard', save_path.split('/')[-2]))
@@ -202,29 +202,8 @@ def main(args):
                                    channel_N=args.channel_N,
                                    channel_M=args.channel_M,
                                    channel_out=bands)
-    elif args.model == 'HyperCompress1':
-        model = HyperCompress1(channel_in=bands,
-                               channel_N=args.channel_N,
-                               channel_M=args.channel_M,
-                               channel_out=bands)
-    elif args.model == 'HyperCompress2':
-        from models.hypercompress2 import HyperCompress2
-        model = HyperCompress2(channel_in=bands,
-                               channel_N=args.channel_N,
-                               channel_M=args.channel_M,
-                               channel_out=bands)
-    elif args.model == 'HyperCompress3':
-        from models.hypercompress3 import HyperCompress3
-        model = HyperCompress3(channel_in=bands,
-                               channel_N=args.channel_N,
-                               channel_M=args.channel_M,
-                               channel_out=bands)
-    elif args.model == 'HyperCompress4':
-        from models.hypercompress4 import HyperCompress4
-        model = HyperCompress4(channel_in=bands,
-                               channel_N=args.channel_N,
-                               channel_M=args.channel_M,
-                               channel_out=bands)
+    elif args.model == 'transformer':
+        model = SymmetricalTransFormer(channel_in=bands)
 
     criterion = RateDistortionLoss(args.lmbda)
     criterion.cuda()
