@@ -40,8 +40,8 @@ def imsave(recon, origin, save_path, i):
 
     recon = recon.cpu().numpy()
     origin = origin.cpu().numpy()
-    jet_map = np.loadtxt('/data1/zhaoshuyi/AIcompress/baseline/images/jet_int.txt', dtype=np.int)
-    down_matrix_path = '/data1/zhaoshuyi/Datasets/CAVE/Spc_P.mat'
+    jet_map = np.loadtxt('./images/jet_int.txt', dtype=np.int)
+    down_matrix_path = '/data3/zhaoshuyi/Datasets/CAVE/Spc_P.mat'
     down_matrix = sio.loadmat(down_matrix_path)['P']    #(3,31)
 
     

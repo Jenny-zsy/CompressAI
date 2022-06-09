@@ -41,7 +41,7 @@ def test_checkpoint(model, test_loader, args):
             '''--------------------
             plot reconstructed_image and residual_image
             --------------------'''
-            if args.ifplot and args.checkpoint == args.epochs:
+            if args.plot and args.checkpoint == args.endepoch:
                 save_path = os.path.join(
                     model_path, "checkpoint{}".format(args.checkpoint))
                 if not os.path.exists(save_path):
@@ -116,7 +116,7 @@ if __name__ == "__main__":
                         default=0)
     parser.add_argument('--epoch_stride', type=int, default=100)
     parser.add_argument('--gpu', default="0")
-    parser.add_argument('--ifplot', default=False)
+    parser.add_argument('--plot', default=False)
     args = parser.parse_args()
 
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"

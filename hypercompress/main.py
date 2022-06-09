@@ -212,29 +212,6 @@ def main(args):
                                    channel_out=bands)
     elif args.model == 'transformer':
         model = SymmetricalTransFormer(channel_in=bands)
-    '''elif args.model == 'HyperCompress1':
-        model = HyperCompress1(channel_in=bands,
-                               channel_N=args.channel_N,
-                               channel_M=args.channel_M,
-                               channel_out=bands)
-    elif args.model == 'HyperCompress2':
-        from models.hypercompress2 import HyperCompress2
-        model = HyperCompress2(channel_in=bands,
-                               channel_N=args.channel_N,
-                               channel_M=args.channel_M,
-                               channel_out=bands)
-    elif args.model == 'HyperCompress3':
-        from models.hypercompress3 import HyperCompress3
-        model = HyperCompress3(channel_in=bands,
-                               channel_N=args.channel_N,
-                               channel_M=args.channel_M,
-                               channel_out=bands)
-    elif args.model == 'HyperCompress4':
-        from models.hypercompress4 import HyperCompress4
-        model = HyperCompress4(channel_in=bands,
-                               channel_N=args.channel_N,
-                               channel_M=args.channel_M,
-                               channel_out=bands)'''
 
     #criterion = RateDistortionLoss(args.lmbda)
     criterion = RateDistortion_SAM_Loss(args.lmbda, args.beta)
@@ -242,9 +219,9 @@ def main(args):
 
     optimizer, aux_optimizer = configure_optimizers(model, args)
 
-    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
+    #lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
     #lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.8)
-    #lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, args.milestones, gamma=args.gamma)
+    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, args.milestones, gamma=args.gamma)
 
     # load model and continue training
     if args.continue_training:
@@ -271,7 +248,7 @@ def main(args):
     valid_loss_sum = []
     for epoch in range(start_epoch, args.epochs):
 
-        print("第%d个epoch的学习率：%f" % (epoch, optimizer.param_groups[0]['lr']))
+        
         writter.add_scalar('lr', optimizer.param_groups[0]['lr'], epoch)
 
         train_loss, train_mse, train_bpp, train_sam = train_epoch(args, model, criterion, optimizer,
@@ -279,6 +256,7 @@ def main(args):
                                                                   args.epochs, f)
         valid_loss, valid_mse, valid_bpp, valid_sam = test_epoch(args, model, criterion, valid_dataloader,
                                                                  epoch, f)
+        print("第%d个epoch的学习率：%f" % (epoch, optimizer.param_groups[0]['lr']))
         lr_scheduler.step(valid_loss)
 
         train_loss_sum.append(train_loss.cpu().detach().numpy())
