@@ -212,7 +212,8 @@ def main(args):
                                    channel_out=bands)
     elif args.model == 'transformer':
         model = SymmetricalTransFormer(channel_in=bands)
-
+    model.to(args.device)
+    
     #criterion = RateDistortionLoss(args.lmbda)
     criterion = RateDistortion_SAM_Loss(args.lmbda, args.beta)
     criterion.cuda()
