@@ -169,7 +169,7 @@ def main(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = '../../compressresults/{}_{}_chN{}_chM{}_lambda{}_beta{}_bs{}_lr{}/'.format(
+    save_path = '../../compressresults/{}_{}_chN{}_chM{}_lambda{}_beta{}_bs{}_ReduceLR{}/'.format(
         args.model, args.train_data, args.channel_N, args.channel_M,
         args.lmbda, args.beta, args.batch_size * gpu_num, args.lr)
     if not os.path.exists(save_path):
@@ -220,9 +220,9 @@ def main(args):
 
     optimizer, aux_optimizer = configure_optimizers(model, args)
 
-    #lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
+    lr_scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
     #lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=2, gamma=0.8)
-    lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, args.milestones, gamma=args.gamma)
+    #lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, args.milestones, gamma=args.gamma)
 
     # load model and continue training
     if args.continue_training:
