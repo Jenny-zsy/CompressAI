@@ -699,7 +699,11 @@ class SymmetricalTransFormer(nn.Module):
         if scale_table is None:
             scale_table = get_scale_table()
         updated = self.gaussian_conditional.update_scale_table(scale_table, force=force)
-        updated |= super().update(force=force)
+        for m in self.children():
+            if not isinstance(m, EntropyBottleneck):
+                continue
+            rv = m.update(force=force)
+            updated |= rv
         return updated
 
     def load_state_dict(self, state_dict):
