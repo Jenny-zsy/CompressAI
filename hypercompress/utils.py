@@ -149,3 +149,14 @@ def update_registered_buffers(
             policy,
             dtype,
         )
+
+def AGWN_Batch(x, SNR):
+    b, h, m, n = x.shape
+    snr = 10**(SNR/10.0)
+    x_ = []
+    for i in range(b):
+        img = x[i, :, :, :].unsqueeze(0)
+        xpower = torch.sum(img**2)/(h*m*n)
+        npower = xpower/snr
+        x_.append(img + torch.randn_like(img) * torch.sqrt(npower))
+    return torch.cat(x_, 0)

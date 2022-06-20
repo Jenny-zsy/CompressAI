@@ -52,10 +52,10 @@ def test_checkpoint(model, test_loader, args):
             '''--------------------
             plot reconstructed_image and residual_image
             --------------------'''
-            save_path = os.path.join(model_path, "checkpoint1000_ae")
+            '''save_path = os.path.join(model_path, "checkpoint1000_ae")
             if not os.path.exists(save_path):
                     os.mkdir(save_path)
-            imsave(x_hat, img.squeeze(), save_path, i)
+            imsave(x_hat, img.squeeze(), save_path, i)'''
 
             '''--------------------
             compute metric: PSNR, MS-SSIM, SAM
@@ -150,6 +150,9 @@ if __name__ == "__main__":
         model = ContextHyperprior(channel_in=bands,channel_N=args.channel_N, channel_M=args.channel_M, channel_out=bands)
     elif  args.model == 'cheng2020':
         model = Cheng2020Attention(channel_in=bands,channel_N=args.channel_N, channel_M=args.channel_M, channel_out= bands)
+    elif args.model == 'Hypercompress4':
+        from models.CA.hypercompress4 import HyperCompress4
+        model = HyperCompress4(channel_in=bands, channel_N=args.channel_N, channel_M=args.channel_M, channel_out= bands)
     elif args.model == 'transformer':
         from models.transformercompress import SymmetricalTransFormer
         model = SymmetricalTransFormer(channel_in=bands)

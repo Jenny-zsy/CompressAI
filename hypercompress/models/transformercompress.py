@@ -8,47 +8,12 @@ from models.entropy_models import EntropyBottleneck, GaussianConditional
 from models.ops.ops import ste_round
 from compressai.ans import BufferedRansEncoder, RansDecoder
 from utils import update_registered_buffers
+from models.layers import *
 
 # From Balle's tensorflow compression examples
 SCALES_MIN = 0.11
 SCALES_MAX = 256
 SCALES_LEVELS = 64
-
-def conv3x3(in_ch: int, out_ch: int, stride: int = 1) -> nn.Module:
-    """3x3 convolution with padding."""
-    return nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=stride, padding=1)
-
-
-def subpel_conv3x3(in_ch: int, out_ch: int, r: int = 1) -> nn.Sequential:
-    """3x3 sub-pixel convolution for up-sampling."""
-    return nn.Sequential(
-        nn.Conv2d(in_ch, out_ch * r ** 2, kernel_size=3, padding=1), nn.PixelShuffle(r)
-    )
-
-
-def conv1x1(in_ch: int, out_ch: int, stride: int = 1) -> nn.Module:
-    """1x1 convolution."""
-    return nn.Conv2d(in_ch, out_ch, kernel_size=1, stride=stride)
-
-def conv(in_channels, out_channels, kernel_size=5, stride=2):
-    return nn.Conv2d(
-        in_channels,
-        out_channels,
-        kernel_size=kernel_size,
-        stride=stride,
-        padding=kernel_size // 2,
-    )
-
-
-def deconv(in_channels, out_channels, kernel_size=5, stride=2):     # SN -1 + k - 2p
-    return nn.ConvTranspose2d(
-        in_channels,
-        out_channels,
-        kernel_size=kernel_size,
-        stride=stride,
-        output_padding=stride - 1,
-        padding=kernel_size // 2,
-    )
 
 def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
     return torch.exp(torch.linspace(math.log(min), math.log(max), levels))
@@ -536,6 +501,7 @@ class SymmetricalTransFormer(nn.Module):
             nn.GELU(),
             conv3x3(384, 384),
         )
+        # entropy_param for mu
         self.cc_mean_transforms = nn.ModuleList(
             nn.Sequential(
                 conv(384 + 32 * min(i, 6), 224, stride=1, kernel_size=3),
@@ -549,6 +515,7 @@ class SymmetricalTransFormer(nn.Module):
                 conv(64, 32, stride=1, kernel_size=3),
             ) for i in range(num_slices)
         )
+        # entropy_param for sigma
         self.cc_scale_transforms = nn.ModuleList(
             nn.Sequential(
                 conv(384 + 32 * min(i, 6), 224, stride=1, kernel_size=3),
@@ -628,13 +595,13 @@ class SymmetricalTransFormer(nn.Module):
         for i in range(self.num_layers):
             layer = self.layers[i]
             x, Wh, Ww = layer(x, Wh, Ww)
-            #print("enc%d_shape: "%i, x.shape)
+            print("enc%d_shape: "%i, x.shape)
 
         y = x
         C = self.embed_dim * 8
         y = y.view(-1, Wh, Ww, C).permute(0, 3, 1, 2).contiguous()
         y_shape = y.shape[2:]
-        #print("y: ", y.shape)
+        print("y: ", y.shape)
 
         z = self.h_a(y)
         #print("z: ", z.shape)

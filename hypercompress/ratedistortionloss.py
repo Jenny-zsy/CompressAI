@@ -87,3 +87,36 @@ class RateDistortion_SAM_Loss(nn.Module):
         out["loss"] = self.lmbda * 255**2 * out["mse_loss"] + out["bpp_loss"] + self.beta*SAM_Loss
         return out
 
+
+class RateDistortion_SAM_Deg_Loss(nn.Module):
+    def __init__(self, lmbda=1e-2, alpha=1e-2, beta=1e-2):
+        super().__init__()
+        self.mse = nn.MSELoss()
+        self.lmbda = lmbda
+        self.beta = beta
+        self.alpha = alpha
+    
+    def forward(self, output, target, noise_input):
+        N, _, H, W = target.size()
+        out = {}
+        num_pixels = N * H * W
+
+        SAM_Loss = 0
+        for i in range(N):
+            SAM_Loss += SAM_GPU(output["x_hat"][i], target[i])
+            
+        SAM_Loss = SAM_Loss / N
+        out["sam_loss"] = SAM_Loss
+        
+        out["deg_loss"] = self.mse(output["deg"]+noise_input, target)
+
+        out["bpp_loss"] = sum(
+            (torch.log(likelihoods).sum() / (-math.log(2) * num_pixels))
+            for likelihoods in output["likelihoods"].values()
+        )
+        out["mse_loss"] = self.mse(output["x_hat"], target)
+        
+        out["loss"] = self.lmbda * 255**2 * out["mse_loss"] + out["bpp_loss"] + self.beta*SAM_Loss + self.alpha* 255**2 * out["deg_loss"]
+        
+        return out
+

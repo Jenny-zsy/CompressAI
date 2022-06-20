@@ -6,18 +6,25 @@
     Uses self-attention, residual blocks with small convolutions (3x3 and 1x1),
     and sub-pixel convolutions for up-sampling.
 """
-from calendar import prcal
-from telnetlib import EC
-from typing import ChainMap
-from re import S
+import warnings
 from builtins import print, super
 import torch
+import torch.nn.functional as F
 from torch import nn
 
 from models.gdn import GDN
 from models.masked_conv import MaskedConv2d
 from models.entropy_models import EntropyBottleneck, GaussianConditional
-from models.ca import CBAM_channel, CBAM_spatial
+from models.CA.ca import SEBlock, ECABlock, CBAM_channel, CBAM_spatial
+from compressai.ans import BufferedRansEncoder, RansDecoder
+
+# From Balle's tensorflow compression examples
+SCALES_MIN = 0.11
+SCALES_MAX = 256
+SCALES_LEVELS = 64
+
+def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
+    return torch.exp(torch.linspace(math.log(min), math.log(max), levels))
 
 
 class ResidualBlock(nn.Module):
@@ -378,6 +385,184 @@ class HyperCompress4(nn.Module):
                 "z": z_likelihoods
             }
         }
+    def update(self, scale_table=None, force=False):
+        if scale_table is None:
+            scale_table = get_scale_table()
+        updated = self.gaussian.update_scale_table(scale_table, force=force)
+        for m in self.children():
+            if not isinstance(m, EntropyBottleneck):
+                continue
+            rv = m.update(force=force)
+            updated |= rv
+        return updated
+
+    def compress(self, x):
+        if next(self.parameters()).device != torch.device("cpu"):
+            warnings.warn(
+                "Inference on GPU is not recommended for the autoregressive "
+                "models (the entropy coder is run sequentially on CPU)."
+            )
+
+        y = self.encoder(x)
+        z = self.hyper_encoder(y)
+
+        z_strings = self.entropy_bottleneck.compress(z)
+        z_hat = self.entropy_bottleneck.decompress(z_strings, z.size()[-2:])
+
+        params = self.hyper_decoder(z_hat)
+
+        s = 4  # scaling factor between z and y
+        kernel_size = 5  # context prediction kernel size
+        padding = (kernel_size - 1) // 2
+
+        y_height = z_hat.size(2) * s
+        y_width = z_hat.size(3) * s
+
+        y_hat = F.pad(y, (padding, padding, padding, padding))
+
+        y_strings = []
+        for i in range(y.size(0)):
+            string = self._compress_ar(
+                y_hat[i : i + 1],
+                params[i : i + 1],
+                y_height,
+                y_width,
+                kernel_size,
+                padding,
+            )
+            y_strings.append(string)
+
+        return {"strings": [y_strings, z_strings], "shape": z.size()[-2:]}
+
+    def _compress_ar(self, y_hat, params, height, width, kernel_size, padding):
+        cdf = self.gaussian.quantized_cdf.tolist()
+        cdf_lengths = self.gaussian.cdf_length.tolist()
+        offsets = self.gaussian.offset.tolist()
+
+        encoder = BufferedRansEncoder()
+        symbols_list = []
+        indexes_list = []
+
+        # Warning, this is slow...
+        # TODO: profile the calls to the bindings...
+        masked_weight = self.context.masked.weight * self.context.masked.mask
+        for h in range(height):
+            for w in range(width):
+                y_crop = y_hat[:, :, h : h + kernel_size, w : w + kernel_size]
+                ctx_p = F.conv2d(
+                    y_crop,
+                    masked_weight,
+                    bias=self.context.masked.bias,
+                )
+
+                # 1x1 conv for the entropy parameters prediction network, so
+                # we only keep the elements in the "center"
+                p = params[:, :, h : h + 1, w : w + 1]
+                gaussian_params = self.entropy_parameters(torch.cat((p, ctx_p), dim=1))
+                gaussian_params = gaussian_params.squeeze(3).squeeze(2)
+                scales_hat, means_hat = gaussian_params.chunk(2, 1)
+
+                indexes = self.gaussian.build_indexes(scales_hat)
+
+                y_crop = y_crop[:, :, padding, padding]
+                y_q = self.gaussian.quantize(y_crop, "symbols", means_hat)
+                y_hat[:, :, h + padding, w + padding] = y_q + means_hat
+
+                symbols_list.extend(y_q.squeeze().tolist())
+                indexes_list.extend(indexes.squeeze().tolist())
+
+        encoder.encode_with_indexes(
+            symbols_list, indexes_list, cdf, cdf_lengths, offsets
+        )
+
+        string = encoder.flush()
+        return string
+
+    def decompress(self, strings, shape):
+        assert isinstance(strings, list) and len(strings) == 2
+
+        if next(self.parameters()).device != torch.device("cpu"):
+            warnings.warn(
+                "Inference on GPU is not recommended for the autoregressive "
+                "models (the entropy coder is run sequentially on CPU)."
+            )
+
+        # FIXME: we don't respect the default entropy coder and directly call the
+        # range ANS decoder
+
+        z_hat = self.entropy_bottleneck.decompress(strings[1], shape)
+        params = self.hyper_decoder(z_hat)
+
+        s = 4  # scaling factor between z and y
+        kernel_size = 5  # context prediction kernel size
+        padding = (kernel_size - 1) // 2
+
+        y_height = z_hat.size(2) * s
+        y_width = z_hat.size(3) * s
+
+        # initialize y_hat to zeros, and pad it so we can directly work with
+        # sub-tensors of size (N, C, kernel size, kernel_size)
+        y_hat = torch.zeros(
+            (z_hat.size(0), self.context.masked.in_channels, y_height + 2 * padding, y_width + 2 * padding),
+            device=z_hat.device,
+        )
+
+        for i, y_string in enumerate(strings[0]):
+            self._decompress_ar(
+                y_string,
+                y_hat[i : i + 1],
+                params[i : i + 1],
+                y_height,
+                y_width,
+                kernel_size,
+                padding,
+            )
+
+        y_hat = F.pad(y_hat, (-padding, -padding, -padding, -padding))
+        #print(y_hat)
+        x_hat = self.decoder(y_hat).clamp_(0, 1)
+        print(x_hat)
+        return {"x_hat": x_hat}
+
+    def _decompress_ar(
+        self, y_string, y_hat, params, height, width, kernel_size, padding
+    ):
+        cdf = self.gaussian.quantized_cdf.tolist()
+        cdf_lengths = self.gaussian.cdf_length.tolist()
+        offsets = self.gaussian.offset.tolist()
+
+        decoder = RansDecoder()
+        decoder.set_stream(y_string)
+
+        # Warning: this is slow due to the auto-regressive nature of the
+        # decoding... See more recent publication where they use an
+        # auto-regressive module on chunks of channels for faster decoding...
+        for h in range(height):
+            for w in range(width):
+                # only perform the 5x5 convolution on a cropped tensor
+                # centered in (h, w)
+                y_crop = y_hat[:, :, h : h + kernel_size, w : w + kernel_size]
+                ctx_p = F.conv2d(
+                    y_crop,
+                    self.context.masked.weight,
+                    bias=self.context.masked.bias,
+                )
+                # 1x1 conv for the entropy parameters prediction network, so
+                # we only keep the elements in the "center"
+                p = params[:, :, h : h + 1, w : w + 1]
+                gaussian_params = self.entropy_parameters(torch.cat((p, ctx_p), dim=1))
+                scales_hat, means_hat = gaussian_params.chunk(2, 1)
+
+                indexes = self.gaussian.build_indexes(scales_hat)
+                rv = decoder.decode_stream(
+                    indexes.squeeze().tolist(), cdf, cdf_lengths, offsets
+                )
+                rv = torch.Tensor(rv).reshape(1, -1, 1, 1)
+                rv = self.gaussian.dequantize(rv, means_hat)
+
+                hp = h + padding
+                wp = w + padding
+                y_hat[:, :, hp : hp + 1, wp : wp + 1] = rv
 
 
 import math

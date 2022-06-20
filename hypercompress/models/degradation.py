@@ -6,25 +6,37 @@
     Uses self-attention, residual blocks with small convolutions (3x3 and 1x1),
     and sub-pixel convolutions for up-sampling.
 """
-import warnings
-from builtins import print, super
+from msilib.schema import Feature
 import torch
+import warnings
 import torch.nn.functional as F
+
+from builtins import print, super
 from torch import nn
 
 from models.gdn import GDN
 from models.masked_conv import MaskedConv2d
 from models.entropy_models import EntropyBottleneck, GaussianConditional
-from models.CA.ca import SEBlock, ECABlock, CBAM_channel, CBAM_spatial
 from compressai.ans import BufferedRansEncoder, RansDecoder
+from models.ops.ops import ste_round
 
 # From Balle's tensorflow compression examples
 SCALES_MIN = 0.11
 SCALES_MAX = 256
 SCALES_LEVELS = 64
 
+def mu(Q,M):
+
+    return (torch.sum(Q*M)) / M.sum()
+
+def sigma(Q,M):
+   
+    return torch.sqrt( torch.sum(Q*Q*M-mu(Q,M)) / M.sum())
+
+
 def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
     return torch.exp(torch.linspace(math.log(min), math.log(max), levels))
+
 class ResidualBlock(nn.Module):
     #Simple residual block with two 3x3 convolutions.
     def __init__(self, channel_in, channel_out):
@@ -155,41 +167,37 @@ class Encoder(nn.Module):
         self.RBS1 = ResidualBlockWithStride(channel_in, channel_mid, stride)
         self.RB1 = ResidualBlock(channel_mid, channel_mid)
         self.RBS2 = ResidualBlockWithStride(channel_mid, channel_mid, stride)
-        self.ca1 = ECABlock(channel_mid)
         self.att1 = AttentionBlock(channel_mid)
         self.RB2 = ResidualBlock(channel_mid, channel_mid)
         self.RBS3 = ResidualBlockWithStride(channel_mid, channel_mid, stride)
         self.RB3 = ResidualBlock(channel_mid, channel_mid)
         self.conv = nn.Conv2d(channel_mid, channel_out, 3, 2, 1)
-        self.ca2 = ECABlock(channel_out)
         self.att2 = AttentionBlock(channel_out)
 
     def forward(self, x):
         x = self.RBS1(x)
         x = self.RB1(x)
         x = self.RBS2(x)
-        x = self.ca1(x)
         x = self.att1(x)
         x = self.RB2(x)
         x = self.RBS3(x)
         x = self.RB3(x)
         x = self.conv(x)
-        x = self.ca2(x)
         x = self.att2(x)
         return x
 
 
-class Decoder(nn.Module):
+class DecoderwithDeg(nn.Module):
 
     def __init__(self, channel_in=192, channel_mid=128, channel_out=3):
-        super(Decoder, self).__init__()
-        self.ca1 = ECABlock(channel_in)
+        super(DecoderwithDeg, self).__init__()
+
+        '''Decoder'''
         self.att1 = AttentionBlock(channel_in)
         self.RB1 = ResidualBlock(channel_in, channel_mid)
         self.RBU1 = ResidualBlockUpsample(channel_mid, channel_mid, 2)
         self.RB2 = ResidualBlock(channel_mid, channel_mid)
         self.RBU2 = ResidualBlockUpsample(channel_mid, channel_mid, 2)
-        self.ca2 = ECABlock(channel_mid)
         self.att2 = AttentionBlock(channel_mid)
         self.RB3 = ResidualBlock(channel_mid, channel_mid)
         self.RBU3 = ResidualBlockUpsample(channel_mid, channel_mid, 2)
@@ -197,9 +205,90 @@ class Decoder(nn.Module):
         self.conv = nn.Sequential(
             nn.Conv2d(channel_mid, channel_out * 2**2, 3, padding=1),
             nn.PixelShuffle(2))
+            
+        '''DegDecoder'''
+        self.conv1 =  nn.Sequential(
+            nn.Conv2d(channel_in, channel_in*4, 3, padding=1),
+            nn.PixelShuffle(2),
+            nn.LeakyReLU(inplace=True))
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(channel_in, channel_in*4, 3, padding=1),
+            nn.PixelShuffle(2),
+            nn.LeakyReLU(inplace=True))
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(channel_in, channel_in*4, 3, padding=1),
+            nn.PixelShuffle(2),
+            nn.LeakyReLU(inplace=True))
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(channel_in, channel_in*4, 3, padding=1),
+            nn.PixelShuffle(2),
+            nn.LeakyReLU(inplace=True))
+        self.conv5 = nn.Conv2d(channel_in, channel_out, 3, 1, 1)
+    
+    def Feature_fusion(f, mask):
+        one = torch.ones(mask.shape)
+        f_s = sigma(f, one-mask)*((f*mask-mu(f,mask))/sigma(f,mask)) + mu(f, one-mask)
+        return f_s*mask + f*(one-mask)
 
-    def forward(self, x):
-        x = self.ca1(x)
+    def forward(self, x, deg):
+
+        deg1 = self.conv1(deg)
+        deg2 = self.conv2(deg1)
+        deg3 = self.conv2(deg2)
+        deg4 = self.conv4(deg3)
+        deg_mask = self.conv5(deg4)
+
+        x1 = self.Feature_fusion(x, deg1)
+        x1 = self.att1(x1)
+        x1 = self.RB1(x1)
+        x1 = self.RBU1(x1)
+        #print("1: ", x1.shape)
+
+        x2 = self.Feature_fusion(x1, deg2)
+        x2 = self.RB2(x2)
+        x2 = self.RBU2(x2)
+        #print("2: ", x.shape)
+
+        x3 = self.Feature_fusion(x2, deg3)
+        x3 = self.att2(x3)
+        x3 = self.RB3(x3)
+        x3 = self.RBU3(x3)
+        #print("3: ", x.shape)
+
+        x4 = self.Feature_fusion(x3, deg4)
+        x4 = self.RB4(x4)
+        x4 = self.conv(x4)
+        #print("4: ", x.shape)
+
+        return x4, deg_mask
+
+class Decoder(nn.Module):
+
+    def __init__(self, channel_in=192, channel_mid=128, channel_out=3):
+        super(Decoder, self).__init__()
+
+        '''Decoder'''
+        self.att1 = AttentionBlock(channel_in)
+        self.RB1 = ResidualBlock(channel_in, channel_mid)
+        self.RBU1 = ResidualBlockUpsample(channel_mid, channel_mid, 2)
+        self.RB2 = ResidualBlock(channel_mid, channel_mid)
+        self.RBU2 = ResidualBlockUpsample(channel_mid, channel_mid, 2)
+        self.att2 = AttentionBlock(channel_mid)
+        self.RB3 = ResidualBlock(channel_mid, channel_mid)
+        self.RBU3 = ResidualBlockUpsample(channel_mid, channel_mid, 2)
+        self.RB4 = ResidualBlock(channel_mid, channel_mid)
+        self.conv = nn.Sequential(
+            nn.Conv2d(channel_mid, channel_out * 2**2, 3, padding=1),
+            nn.PixelShuffle(2))
+            
+    def forward(self, x, deg):
+
+        deg1 = self.conv1(deg)
+        deg2 = self.conv2(deg1)
+        deg3 = self.conv2(deg2)
+        deg4 = self.conv4(deg3)
+        deg_mask = self.conv5(deg4)
+
         x = self.att1(x)
         x = self.RB1(x)
         x = self.RBU1(x)
@@ -207,7 +296,6 @@ class Decoder(nn.Module):
         x = self.RB2(x)
         x = self.RBU2(x)
         #print("2: ", x.shape)
-        x = self.ca2(x)
         x = self.att2(x)
         x = self.RB3(x)
         x = self.RBU3(x)
@@ -215,8 +303,8 @@ class Decoder(nn.Module):
         x = self.RB4(x)
         x = self.conv(x)
         #print("4: ", x.shape)
+        
         return x
-
 
 class HyperEncoder(nn.Module):
 
@@ -255,6 +343,56 @@ class HyperDecoder(nn.Module):
             nn.Conv2d(channel_mid*3//2, channel_mid*3//2 * 2**2, 3, padding=1),
             nn.PixelShuffle(2))
         self.conv5 = nn.Conv2d(channel_mid*3//2, channel_mid*2, 3, 1, 1)
+    def forward(self, x):
+        x = self.conv1(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv2(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv3(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv4(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv5(x)
+        return x
+
+class DegEncoder(nn.Module):
+    def __init__(self, channel_in=31, channel_out=192):
+        super(DegEncoder, self).__init__()
+        self.conv1 = nn.Conv2d(channel_in, channel_out, 3, 1, 1)
+        self.conv2 = nn.Conv2d(channel_out, channel_out, 3, 2, 1)
+        self.conv3 = nn.Conv2d(channel_out, channel_out, 3, 2, 1)
+        self.conv4 = nn.Conv2d(channel_out, channel_out, 3, 2, 1)
+        self.conv5 = nn.Conv2d(channel_out, channel_out, 3, 2, 1)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv2(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv3(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv4(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv5(x)
+        return x
+
+class DegDecoder(nn.Module):
+    def __init__(self, channel_in=192, channel_out=31):
+        super(DegDecoder, self).__init__()
+        self.conv1 =  nn.Sequential(
+            nn.Conv2d(channel_in, channel_in*4, 3, padding=1),
+            nn.PixelShuffle(2))
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(channel_in, channel_in*4, 3, padding=1),
+            nn.PixelShuffle(2))
+        self.conv3 = nn.Sequential(
+            nn.Conv2d(channel_in, channel_in*4, 3, padding=1),
+            nn.PixelShuffle(2))
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(channel_in, channel_in*4, 3, padding=1),
+            nn.PixelShuffle(2))
+        self.conv5 = nn.Conv2d(channel_in, channel_out, 3, 1, 1)
+
     def forward(self, x):
         x = self.conv1(x)
         x = nn.LeakyReLU(inplace=True)(x)
@@ -310,27 +448,29 @@ class ContextPrediction(nn.Module):
         return self.masked(x)
 
 
-class HyperCompress1(nn.Module):
+class Degcompress(nn.Module):
 
     def __init__(self,
                  channel_in=3,
                  channel_N=128,
                  channel_M=192,
-                 channel_out=3):
-        super(HyperCompress1, self).__init__()
+                 channel_out=31):
+        super(Degcompress, self).__init__()
         self.encoder = Encoder(channel_in=channel_in,
                                channel_mid=channel_N,
                                channel_out=channel_M)
-        self.decoder = Decoder(channel_in=channel_M, channel_out=channel_out)
+        self.decoder = DecoderwithDeg(channel_in=channel_M, channel_out=channel_out)
 
         self.hyper_encoder = HyperEncoder(channel_in=channel_M,
                                           channel_out=channel_N)
         self.hyper_decoder = HyperDecoder(channel_in=channel_N,
                                           channel_mid=channel_M)
-
+        self.deg_encode = DegEncoder(channel_in=channel_in, channel_out=channel_M)
+        #self.deg_decoder = DegDecoder(channel_in=channel_M, channel_out=channel_out)
         self.entropy_parameters = EntropyParameters(channel_in=channel_M * 4)
         self.context = ContextPrediction(channel_in=channel_M)
-        self.entropy_bottleneck = EntropyBottleneck(channels=channel_N)
+        self.hyper_entropy_bottleneck = EntropyBottleneck(channels=channel_N)
+        self.deg_entropy_bottleneck = EntropyBottleneck(channels=channel_M)
         self.gaussian = GaussianConditional(None)
 
     def aux_loss(self):
@@ -347,11 +487,16 @@ class HyperCompress1(nn.Module):
         #print("y:", y.shape)
         z = self.hyper_encoder(y)
         #print("z:", z.shape)
-        z_hat, z_likelihoods = self.entropy_bottleneck(z)
+        z_hat, z_likelihoods = self.hyper_entropy_bottleneck(z)
         #print("z_hat:", z_hat.shape)
         #print("z_lakelihoods:", z_likelihoods.shape)
         psi = self.hyper_decoder(z_hat)
         #print("psi:", psi.shape)
+
+        deg = self.deg_encode(x)
+        print(deg.shape)
+        deg_hat, deg_likelihoods = self.deg_entropy_bottleneck(deg)
+
 
         y_hat = self.gaussian.quantize(
             y, "noise" if self.training else "dequantize")
@@ -366,15 +511,18 @@ class HyperCompress1(nn.Module):
         _, y_likelihoods = self.gaussian(y, scales_hat, means=means_hat)
         #print("y_likelihoods:", y_likelihoods.shape)
 
-        x_hat = self.decoder(y_hat)
+        x_hat, deg = self.decoder(y_hat, deg_hat)
         #print("x_hat:", x_hat.shape)
         return {
             "x_hat": x_hat,
+            "deg": deg,
             "likelihoods": {
                 "y": y_likelihoods,
-                "z": z_likelihoods
+                "z": z_likelihoods,
+                "deg": deg_likelihoods,
             }
         }
+
     def update(self, scale_table=None, force=False):
         if scale_table is None:
             scale_table = get_scale_table()
@@ -553,6 +701,9 @@ class HyperCompress1(nn.Module):
                 hp = h + padding
                 wp = w + padding
                 y_hat[:, :, hp : hp + 1, wp : wp + 1] = rv
+
+
+
 
 
 import math
