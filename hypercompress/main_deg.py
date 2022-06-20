@@ -12,7 +12,7 @@ from torch import optim
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
 
-from ratedistortionloss import RateDistortionLoss, RateDistortion_SAM_Loss
+from ratedistortionloss import RateDistortion_SAM_Deg_Loss
 from utils import AverageMeter, AGWN_Batch
 
 from dataset_hsi import CAVE_Dataset
@@ -74,10 +74,13 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
     bpp_loss = AverageMeter()
     mse_loss = AverageMeter()
     sam_loss = AverageMeter()
+    deg_loss = AverageMeter()
+
     for batch, data in enumerate(train_dataloader):
 
         inputs = AGWN_Batch(data, np.random.randint(20, 40, 1)[0])
         inputs = Variable(inputs.to(args.device))
+        data = data.to(args.device)
 
         optimizer.zero_grad()
 
@@ -99,6 +102,7 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
         bpp_loss.update(out_criterion["bpp_loss"])
         mse_loss.update(out_criterion["mse_loss"])
         sam_loss.update(out_criterion["sam_loss"])
+        deg_loss.update(out_criterion["deg_loss"])
 
         # print out loss and visualise results
         if batch % 10 == 0:
@@ -107,6 +111,7 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
                     epoch, epochs, batch, len(train_dataloader)).ljust(30),
                 'Loss: %.4f'.ljust(14) % (out_criterion["loss"]),
                 'mse_loss: %.6f'.ljust(19) % (out_criterion["mse_loss"]),
+                'deg_loss: %.6f'.ljust(19) % (out_criterion["deg_loss"]),
                 'sam_loss: %.4f'.ljust(19) % (out_criterion["sam_loss"]),
                 'bpp_loss: %.4f'.ljust(17) % (out_criterion["bpp_loss"]),
                 'aux_loss: %.2f'.ljust(17) % (aux_loss.item()))
@@ -114,11 +119,12 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
                 epoch, epochs, batch, len(train_dataloader)).ljust(30))
             f.write('Loss: %.4f'.ljust(14) % (out_criterion["loss"]))
             f.write('mse_loss: %.6f'.ljust(19) % (out_criterion["mse_loss"]))
+            f.write('deg_loss: %.6f'.ljust(19) % (out_criterion["deg_loss"]))
             f.write('sam_loss: %.4f'.ljust(19) % (out_criterion["sam_loss"]))
             f.write('bpp_loss: %.4f'.ljust(17) % (out_criterion["bpp_loss"]))
             f.write('aux_loss: %.2f\n'.ljust(17) % (aux_loss.item()))
 
-    return loss.avg, mse_loss.avg, bpp_loss.avg, sam_loss.avg
+    return loss.avg, mse_loss.avg, bpp_loss.avg, sam_loss.avg, deg_loss.avg
 
 
 def test_epoch(args, model, criterion, test_dataloader, epoch, f):
@@ -128,31 +134,39 @@ def test_epoch(args, model, criterion, test_dataloader, epoch, f):
     bpp_loss = AverageMeter()
     mse_loss = AverageMeter()
     sam_loss = AverageMeter()
+    deg_loss = AverageMeter()
 
     with torch.no_grad():
-        for inputs in test_dataloader:
+        for data in test_dataloader:
+
+            inputs = AGWN_Batch(data, np.random.randint(20, 40, 1)[0])
             inputs = Variable(inputs.to(args.device))
+            data = data.to(args.device)
+
             out = model(inputs)
-            out_criterion = criterion(out, inputs)
+            out_criterion = criterion(out, data, inputs)
 
             bpp_loss.update(out_criterion["bpp_loss"])
             mse_loss.update(out_criterion["mse_loss"])
             sam_loss.update(out_criterion["sam_loss"])
+            deg_loss.update(out_criterion["deg_loss"])
             loss.update(out_criterion["loss"])
 
     f.write('Epoch {} valid '.format(epoch).ljust(30))
     f.write('Loss: %.4f'.ljust(14) % (loss.avg))
     f.write('mse_loss: %.6f'.ljust(19) % (mse_loss.avg))
-    f.write('sam_loss: %.6f'.ljust(19) % (sam_loss.avg))
+    f.write('deg_loss: %.6f'.ljust(19) % (deg_loss.avg))
+    f.write('sam_loss: %.6f'.ljust(19) % (sam_loss.avg)) 
     f.write('bpp_loss: %.4f\n'.ljust(17) % (bpp_loss.avg))
 
     print('Epoch {} valid '.format(epoch).ljust(30),
           'Loss: %.4f'.ljust(14) % (loss.avg),
           'mse_loss: %.6f'.ljust(19) % (mse_loss.avg),
+          'deg_loss: %.6f'.ljust(19) % (deg_loss.avg),
           'sam_loss: %.4f'.ljust(19) % (sam_loss.avg),
           'bpp_loss: %.4f'.ljust(17) % (bpp_loss.avg))
 
-    return loss.avg, mse_loss.avg, bpp_loss.avg, sam_loss.avg
+    return loss.avg, mse_loss.avg, bpp_loss.avg, sam_loss.avg, deg_loss.avg
 
 
 def plot(y1, y2, label, outf):
@@ -172,9 +186,9 @@ def main(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = '../../compressresults/Degcheng2020_{}_chN{}_chM{}_lambda{}_beta{}_bs{}_ReduceLR{}/'.format(
+    save_path = '../../compressresults/Degcheng2020_{}_chN{}_chM{}_lambda{}_alpha{}_beta{}_bs{}_ReduceLR{}/'.format(
         args.train_data, args.channel_N, args.channel_M,
-        args.lmbda, args.beta, args.batch_size * gpu_num, args.lr)
+        args.lmbda, args.alpha, args.beta, args.batch_size * gpu_num, args.lr)
     if not os.path.exists(save_path):
         os.mkdir(save_path)
     writter = SummaryWriter(os.path.join(
@@ -182,7 +196,7 @@ def main(args):
 
     # load dataset
     if args.train_data == 'CAVE':
-        path = '/data3/zhaoshuyi/Datasets/CAVE/hsi/'
+        path = '/data1/zhaoshuyi/Datasets/CAVE/hsi/'
         bands = 31
         train_dataset = CAVE_Dataset(path,
                                      args.patch_size,
@@ -212,7 +226,7 @@ def main(args):
     model.to(args.device)
 
     #criterion = RateDistortionLoss(args.lmbda)
-    criterion = RateDistortion_SAM_Loss(args.lmbda, args.alpha, args.beta)
+    criterion = RateDistortion_SAM_Deg_Loss(args.lmbda, args.alpha, args.beta)
     criterion.cuda()
 
     optimizer, aux_optimizer = configure_optimizers(model, args)
@@ -248,10 +262,10 @@ def main(args):
 
         writter.add_scalar('lr', optimizer.param_groups[0]['lr'], epoch)
 
-        train_loss, train_mse, train_bpp, train_sam = train_epoch(args, model, criterion, optimizer,
+        train_loss, train_mse, train_bpp, train_sam, train_deg = train_epoch(args, model, criterion, optimizer,
                                                                   aux_optimizer, train_dataloader, epoch,
                                                                   args.epochs, f)
-        valid_loss, valid_mse, valid_bpp, valid_sam = test_epoch(args, model, criterion, valid_dataloader,
+        valid_loss, valid_mse, valid_bpp, valid_sam, valid_deg = test_epoch(args, model, criterion, valid_dataloader,
                                                                  epoch, f)
         print("第%d个epoch的学习率：%f" % (epoch, optimizer.param_groups[0]['lr']))
         lr_scheduler.step(valid_loss)
@@ -267,6 +281,8 @@ def main(args):
                                          'valid': valid_mse.cpu().detach().numpy()}, epoch)
         writter.add_scalars('sam_loss', {'train': train_sam.cpu().detach().numpy(),
                                          'valid': valid_sam.cpu().detach().numpy()}, epoch)
+        writter.add_scalars('deg_loss', {'train': train_deg.cpu().detach().numpy(),
+                                         'valid': valid_deg.cpu().detach().numpy()}, epoch)
 
         # save the model
         state = {
@@ -353,7 +369,7 @@ if __name__ == "__main__":
                         help="Bit-rate distortion parameter")
     parser.add_argument("--beta",
                         type=float,
-                        default=1e-2,
+                        default=0.1,
                         help="sam loss parameter")
     parser.add_argument("--alpha",
                         type=float,

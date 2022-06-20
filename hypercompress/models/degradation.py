@@ -6,7 +6,6 @@
     Uses self-attention, residual blocks with small convolutions (3x3 and 1x1),
     and sub-pixel convolutions for up-sampling.
 """
-from msilib.schema import Feature
 import torch
 import warnings
 import torch.nn.functional as F
@@ -31,7 +30,7 @@ def mu(Q,M):
 
 def sigma(Q,M):
    
-    return torch.sqrt( torch.sum(Q*Q*M-mu(Q,M)) / M.sum())
+    return torch.sqrt( abs(torch.sum(Q*Q*M-mu(Q,M)) / M.sum()))
 
 
 def get_scale_table(min=SCALES_MIN, max=SCALES_MAX, levels=SCALES_LEVELS):
@@ -93,9 +92,11 @@ class ResidualBlockUpsample(nn.Module):
             nn.PixelShuffle(upscale))
 
     def forward(self, x):
-        y = self.conv1(x)
-        y = nn.LeakyReLU(inplace=True)(y)
-        y = self.conv2(y)
+        #print(x)
+        y = self.conv1(x)    
+        y = self.igdn(y)
+        #y = nn.LeakyReLU(inplace=True)(y)    
+        y = self.conv2(y)    
         y = self.igdn(y)
         x = self.skip(x)
         out = x + y
@@ -208,54 +209,55 @@ class DecoderwithDeg(nn.Module):
             
         '''DegDecoder'''
         self.conv1 =  nn.Sequential(
-            nn.Conv2d(channel_in, channel_in*4, 3, padding=1),
+            nn.Conv2d(channel_in, channel_mid*4, 3, padding=1),
             nn.PixelShuffle(2),
             nn.LeakyReLU(inplace=True))
         self.conv2 = nn.Sequential(
-            nn.Conv2d(channel_in, channel_in*4, 3, padding=1),
+            nn.Conv2d(channel_mid, channel_mid*4, 3, padding=1),
             nn.PixelShuffle(2),
             nn.LeakyReLU(inplace=True))
         self.conv3 = nn.Sequential(
-            nn.Conv2d(channel_in, channel_in*4, 3, padding=1),
+            nn.Conv2d(channel_mid, channel_mid*4, 3, padding=1),
             nn.PixelShuffle(2),
             nn.LeakyReLU(inplace=True))
         self.conv4 = nn.Sequential(
-            nn.Conv2d(channel_in, channel_in*4, 3, padding=1),
+            nn.Conv2d(channel_mid, channel_out*4, 3, padding=1),
             nn.PixelShuffle(2),
             nn.LeakyReLU(inplace=True))
-        self.conv5 = nn.Conv2d(channel_in, channel_out, 3, 1, 1)
     
-    def Feature_fusion(f, mask):
-        one = torch.ones(mask.shape)
+    def Feature_fusion(self, f, mask):
+        one = torch.ones(mask.shape).cuda()
         f_s = sigma(f, one-mask)*((f*mask-mu(f,mask))/sigma(f,mask)) + mu(f, one-mask)
+        #print(f_s)
         return f_s*mask + f*(one-mask)
 
     def forward(self, x, deg):
 
         deg1 = self.conv1(deg)
         deg2 = self.conv2(deg1)
-        deg3 = self.conv2(deg2)
-        deg4 = self.conv4(deg3)
-        deg_mask = self.conv5(deg4)
-
-        x1 = self.Feature_fusion(x, deg1)
+        deg3 = self.conv3(deg2)
+        deg_mask = self.conv4(deg3)
+        #print(deg)
+        #print(x)
+        
+        x1 = self.Feature_fusion(x, deg)
         x1 = self.att1(x1)
-        x1 = self.RB1(x1)
+        x1 = self.RB1(x1)  
         x1 = self.RBU1(x1)
-        #print("1: ", x1.shape)
-
-        x2 = self.Feature_fusion(x1, deg2)
+        #print("1: ", x1)
+        
+        x2 = self.Feature_fusion(x1, deg1)
         x2 = self.RB2(x2)
         x2 = self.RBU2(x2)
         #print("2: ", x.shape)
 
-        x3 = self.Feature_fusion(x2, deg3)
+        x3 = self.Feature_fusion(x2, deg2)
         x3 = self.att2(x3)
         x3 = self.RB3(x3)
         x3 = self.RBU3(x3)
         #print("3: ", x.shape)
 
-        x4 = self.Feature_fusion(x3, deg4)
+        x4 = self.Feature_fusion(x3, deg3)
         x4 = self.RB4(x4)
         x4 = self.conv(x4)
         #print("4: ", x.shape)
@@ -494,7 +496,7 @@ class Degcompress(nn.Module):
         #print("psi:", psi.shape)
 
         deg = self.deg_encode(x)
-        print(deg.shape)
+        #print(deg.shape)
         deg_hat, deg_likelihoods = self.deg_entropy_bottleneck(deg)
 
 

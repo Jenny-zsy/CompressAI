@@ -108,7 +108,7 @@ class RateDistortion_SAM_Deg_Loss(nn.Module):
         SAM_Loss = SAM_Loss / N
         out["sam_loss"] = SAM_Loss
         
-        out["deg_loss"] = self.mse(output["deg"]+noise_input, target)
+        out["deg_loss"] = self.mse(output["deg"]+target, noise_input)
 
         out["bpp_loss"] = sum(
             (torch.log(likelihoods).sum() / (-math.log(2) * num_pixels))
