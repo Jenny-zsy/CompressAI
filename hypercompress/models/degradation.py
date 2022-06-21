@@ -224,12 +224,14 @@ class DecoderwithDeg(nn.Module):
             nn.Conv2d(channel_mid, channel_out*4, 3, padding=1),
             nn.PixelShuffle(2),
             nn.LeakyReLU(inplace=True))
-    
+        self.sig = nn.Sigmoid()
     def Feature_fusion(self, f, mask):
-        one = torch.ones(mask.shape).cuda()
+        '''one = torch.ones(mask.shape).cuda()
         f_s = sigma(f, one-mask)*((f*mask-mu(f,mask))/sigma(f,mask)) + mu(f, one-mask)
         #print(f_s)
-        return f_s*mask + f*(one-mask)
+        return f_s*mask + f*(one-mask)'''
+        return 
+        
 
     def forward(self, x, deg):
 
@@ -240,24 +242,24 @@ class DecoderwithDeg(nn.Module):
         #print(deg)
         #print(x)
         
-        x1 = self.Feature_fusion(x, deg)
+        x1 = (1-self.sig(deg))*x
         x1 = self.att1(x1)
         x1 = self.RB1(x1)  
         x1 = self.RBU1(x1)
         #print("1: ", x1)
         
-        x2 = self.Feature_fusion(x1, deg1)
+        x2 = (1-self.sig(deg1))*x1
         x2 = self.RB2(x2)
         x2 = self.RBU2(x2)
         #print("2: ", x.shape)
 
-        x3 = self.Feature_fusion(x2, deg2)
+        x3 = (1-self.sig(deg2))*x2
         x3 = self.att2(x3)
         x3 = self.RB3(x3)
         x3 = self.RBU3(x3)
         #print("3: ", x.shape)
 
-        x4 = self.Feature_fusion(x3, deg3)
+        x4 = (1-self.sig(deg3))*x3
         x4 = self.RB4(x4)
         x4 = self.conv(x4)
         #print("4: ", x.shape)
