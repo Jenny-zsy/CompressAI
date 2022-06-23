@@ -339,18 +339,18 @@ class Cheng2020Attention(nn.Module):
     def forward(self, x):
         #print(x.shape)
         y = self.encoder(x)
-        print("y:", y.shape)
+        #print("y:", y.shape)
         z = self.hyper_encoder(y)
-        print("z:", z.shape)
+        #print("z:", z.shape)
         z_hat, z_likelihoods = self.entropy_bottleneck(z)
-        print("z_hat:", z_hat.shape)
+        #print("z_hat:", z_hat.shape)
         #print("z_lakelihoods:", z_likelihoods.shape)
         psi = self.hyper_decoder(z_hat)
         #print("psi:", psi.shape)
 
         y_hat = self.gaussian.quantize(
             y, "noise" if self.training else "dequantize")
-        print("y_hat:", y_hat.shape)
+        #print("y_hat:", y_hat.shape)
         phi = self.context(y_hat)
         #print("phi:", phi.shape)
 

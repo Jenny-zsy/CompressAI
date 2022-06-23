@@ -223,4 +223,5 @@ class TransformerHyperCompress(nn.Module):
         print("y: ", y.shape)
         x_hat = self.decoder(y)
         print("x_hat:", x_hat.shape)
+        
         return x_hat

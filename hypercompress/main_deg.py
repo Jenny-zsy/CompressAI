@@ -186,7 +186,7 @@ def main(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = '../../compressresults/Degcheng2020_{}_chN{}_chM{}_lambda{}_alpha{}_beta{}_bs{}_ReduceLR{}/'.format(
+    save_path = '../../compressresults/Degcheng2020_{}_chN{}_chM{}_lambda{}_alpha{}_beta{}_bs{}_ReduceLR{}_L1/'.format(
         args.train_data, args.channel_N, args.channel_M,
         args.lmbda, args.alpha, args.beta, args.batch_size * gpu_num, args.lr)
     if not os.path.exists(save_path):
@@ -196,7 +196,7 @@ def main(args):
 
     # load dataset
     if args.train_data == 'CAVE':
-        path = '/data1/zhaoshuyi/Datasets/CAVE/hsi/'
+        path = '/data3/zhaoshuyi/Datasets/CAVE/hsi/'
         bands = 31
         train_dataset = CAVE_Dataset(path,
                                      args.patch_size,

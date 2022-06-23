@@ -225,6 +225,7 @@ class DecoderwithDeg(nn.Module):
             nn.PixelShuffle(2),
             nn.LeakyReLU(inplace=True))
         self.sig = nn.Sigmoid()
+        self.softmax  = nn.Softmax()
     def Feature_fusion(self, f, mask):
         '''one = torch.ones(mask.shape).cuda()
         f_s = sigma(f, one-mask)*((f*mask-mu(f,mask))/sigma(f,mask)) + mu(f, one-mask)

@@ -8,14 +8,18 @@ import torch.nn.functional as F
 import math
 import imgvision as iv
 
+from torch.autograd import Variable
 from torch.utils.data import DataLoader
 from collections import defaultdict
-from images.plot import imsave
+from images.plot import imsave, imsave_deg
 
 from dataset_hsi import CAVE_Dataset
-
+from utils import AGWN_Batch, Spa_Downs
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
+from models.degradation import Degcompress
+
+WS = [[7,1/2], [8,3], [9,2], [13,4], [15,1.5]]
 
 def test_checkpoint(model, test_loader, args):
     with torch.no_grad():
@@ -28,7 +32,21 @@ def test_checkpoint(model, test_loader, args):
         sumSAM = 0
         for i, data in enumerate(test_loader):
             img = data['data'].to(args.device)
-            out = model(img)
+            #Random define the spatial downsampler
+            ws = np.random.randint(0,5,1)[0]
+            ws = WS[ws]
+            down_spa = Spa_Downs(
+                31, 1, kernel_type='gauss12', kernel_width=ws[0],
+                sigma=ws[1],preserve_size=True
+            ).type(torch.cuda.FloatTensor)
+            inputs = down_spa(img)
+            #print(inputs.shape)
+            '''if args.noise != 0:
+                inputs = AGWN_Batch(img, args.noise)
+                inputs = Variable(inputs.to(args.device))
+            else:
+                inputs = img'''
+            out = model(inputs)
             name = ''.join(data['name'])
             num_pixels = img.size(2) * img.size(3)
             bpp = sum(
@@ -37,17 +55,18 @@ def test_checkpoint(model, test_loader, args):
             sumBpp += bpp
 
             x_hat = out["x_hat"].squeeze()
+            deg = out["deg"].squeeze()    
 
             '''--------------------
             plot reconstructed_image and residual_image
             --------------------'''
             if args.plot and args.checkpoint == args.endepoch:
                 save_path = os.path.join(
-                    model_path, "checkpoint{}".format(args.checkpoint))
+                    model_path, "checkpoint{}_{}N".format(args.checkpoint, args.noise))
                 if not os.path.exists(save_path):
                     os.mkdir(save_path)
-                imsave(x_hat, img.squeeze(), save_path, i)
-
+                #imsave(x_hat, img.squeeze(), inputs.squeeze(), save_path, i)
+                imsave_deg(deg, save_path, i)
             '''--------------------
             compute metric: PSNR, MS-SSIM, SAM
             --------------------'''
@@ -117,6 +136,7 @@ if __name__ == "__main__":
     parser.add_argument('--epoch_stride', type=int, default=100)
     parser.add_argument('--gpu', default="0")
     parser.add_argument('--plot', default=False)
+    parser.add_argument('--noise', type=int, default =0)
     args = parser.parse_args()
 
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -143,6 +163,8 @@ if __name__ == "__main__":
     elif args.model == 'transformer':
         from models.transformercompress import SymmetricalTransFormer
         model = SymmetricalTransFormer(channel_in=bands)
+    elif args.model == 'deg':
+        model = Degcompress(channel_in=bands,channel_N=args.channel_N, channel_M=args.channel_M, channel_out= bands)
 
     results = defaultdict(list)
     for i in range(args.startepoch, args.endepoch + 1, args.epoch_stride):
@@ -160,7 +182,7 @@ if __name__ == "__main__":
         
         torch.cuda.empty_cache()
 
-    description = (args.test_data)
+    description = (args.test_data, args.noise)
     output = {
         "name": args.model_path,
         "description": f"Inference ({description})",
