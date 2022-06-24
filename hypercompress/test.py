@@ -33,19 +33,19 @@ def test_checkpoint(model, test_loader, args):
         for i, data in enumerate(test_loader):
             img = data['data'].to(args.device)
             #Random define the spatial downsampler
-            ws = np.random.randint(0,5,1)[0]
+            '''ws = np.random.randint(0,5,1)[0]
             ws = WS[ws]
             down_spa = Spa_Downs(
                 31, 1, kernel_type='gauss12', kernel_width=ws[0],
                 sigma=ws[1],preserve_size=True
             ).type(torch.cuda.FloatTensor)
-            inputs = down_spa(img)
+            inputs = down_spa(img)'''
             #print(inputs.shape)
-            '''if args.noise != 0:
+            if args.noise != 0:
                 inputs = AGWN_Batch(img, args.noise)
                 inputs = Variable(inputs.to(args.device))
             else:
-                inputs = img'''
+                inputs = img
             out = model(inputs)
             name = ''.join(data['name'])
             num_pixels = img.size(2) * img.size(3)
@@ -65,7 +65,7 @@ def test_checkpoint(model, test_loader, args):
                     model_path, "checkpoint{}_{}N".format(args.checkpoint, args.noise))
                 if not os.path.exists(save_path):
                     os.mkdir(save_path)
-                #imsave(x_hat, img.squeeze(), inputs.squeeze(), save_path, i)
+                imsave(x_hat, img.squeeze(), inputs.squeeze(), save_path, i)
                 imsave_deg(deg, save_path, i)
             '''--------------------
             compute metric: PSNR, MS-SSIM, SAM

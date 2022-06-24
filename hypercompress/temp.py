@@ -6,11 +6,11 @@ from models.CA.hypercompress4 import HyperCompress4
 from models.degradation import Degcompress
 
 
-'''if __name__ == "__main__":
-    net = Degcompress(channel_in=31)
+if __name__ == "__main__":
+    net = TransformerHyperCompress(channel_in=31)
     x = torch.randn(1, 31, 256, 256)
     out = net(x)
-    #print(out.shape)'''
+    #print(out.shape)
 
 def AGWN_Batch(x, SNR):
     b, h, m, n = x.shape
@@ -49,7 +49,7 @@ def gray2color(gray_array, color_map):
  
     return color_array
 
-if __name__ == "__main__":
+'''if __name__ == "__main__":
     img = sio.loadmat('/data3/zhaoshuyi/Datasets/CAVE/hsi/test/face_ms.mat')['data']/1.932
     noise_img = AGWN_np(img, 20)
 
@@ -63,4 +63,4 @@ if __name__ == "__main__":
     color_jet = gray2color(residual_image, jet_map)
     color_jet = Image.fromarray(np.uint8(color_jet))
     #residual_images = concat_images(Image.fromarray(np.uint8(residual_image)), color_jet)
-    color_jet.save("residual.png")
+    color_jet.save("residual.png")'''

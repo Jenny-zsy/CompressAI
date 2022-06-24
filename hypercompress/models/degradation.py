@@ -501,7 +501,7 @@ class Degcompress(nn.Module):
         deg = self.deg_encode(x)
         #print(deg.shape)
         deg_hat, deg_likelihoods = self.deg_entropy_bottleneck(deg)
-
+        #print(deg_hat.shape, deg_likelihoods.shape)
 
         y_hat = self.gaussian.quantize(
             y, "noise" if self.training else "dequantize")
