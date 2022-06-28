@@ -153,16 +153,43 @@ def update_registered_buffers(
             dtype,
         )
 
+
+
+def gasuss_noise(image, mean=0, var=0.001): 
+    '''    添加高斯噪声    
+    :param image：原始图像    
+    :param mean: 均值    
+    :param var: 方差，越大，噪声越大    
+    :return:noise-添加的噪声，out-加噪后的图像    
+    '''
+    noise =torch.from_numpy(np.random.normal(mean, var**0.5, image.shape)).type_as(image).cuda()  #创建一个均值为mean，方差为var呈高斯分布的图像矩阵
+
+    out = image + noise  # 将噪声和原始图像进行相加得到加噪后的图像
+    if out.min()<0:        
+        low_clip = -1.    
+    else:        
+        low_clip = 0.    
+        out = torch.clip(out, low_clip, 1.0)  # clip函数将元素的大小限制在了low_clip和1之间 
+    return noise, out
+
 def AGWN_Batch(x, SNR):
     b, h, m, n = x.shape
     snr = 10**(SNR/10.0)
     x_ = []
     for i in range(b):
         img = x[i, :, :, :].unsqueeze(0)
-        xpower = torch.sum(img**2)/(h*m*n)
+        xpower = torch.sum(img**2)/(m*n)
         npower = xpower/snr
         x_.append(img + torch.randn_like(img) * torch.sqrt(npower))
     return torch.cat(x_, 0)
+
+
+def AGWN_np(x, SNR):
+    b,m,n = x.shape
+    snr = 10**(SNR/10.0)
+    xpower = np.sum(x**2)/(b*m*n)
+    npower = xpower/snr
+    return  x + np.array(torch.randn_like(torch.from_numpy(x)))*np.sqrt(npower)
 
 class Spa_Downs(nn.Module):
     '''

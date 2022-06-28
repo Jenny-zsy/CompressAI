@@ -36,11 +36,11 @@ def plot_cmap_jet():
     gradient = np.vstack((gradient, gradient))
     fig = plt(gradient, aspect='auto', cmap=plt.get_cmap('jet'))
 
-def imsave(recon, origin, noise, save_path, i):
+def imsave(recon, origin, save_path, i):
 
     recon = recon.cpu().numpy()
     origin = origin.cpu().numpy()
-    noise = noise.cpu().numpy()
+    
     jet_map = np.loadtxt('./images/jet_int.txt', dtype=np.int)
     down_matrix_path = '/data3/zhaoshuyi/Datasets/CAVE/Spc_P.mat'
     down_matrix = sio.loadmat(down_matrix_path)['P']    #(3,31)
@@ -53,14 +53,6 @@ def imsave(recon, origin, noise, save_path, i):
     #print(recon_rgb.shape, recon_rgb.dtype)
     recon_rgb = Image.fromarray(recon_rgb)
     recon_rgb.save(os.path.join(save_path, "{}recon.png".format(i + 1)))
-
-    noise_matrix = np.reshape(noise, [noise.shape[0], noise.shape[1]*noise.shape[2]])
-    noise_rgb_matrix = np.matmul(down_matrix, noise_matrix)
-    noise_rgb = np.reshape(noise_rgb_matrix, [3, noise.shape[1], noise.shape[2]]).transpose(1,2,0)
-    noise_rgb = (noise_rgb*255).clip(0, 255).astype(np.uint8)
-    #print(noise_rgb.shape, noise_rgb.dtype)
-    noise_rgb = Image.fromarray(noise_rgb)
-    noise_rgb.save(os.path.join(save_path, "{}noise.png".format(i + 1)))
 
     residual = np.abs(origin - recon)
     residual /= residual.max()
@@ -75,19 +67,29 @@ def imsave(recon, origin, noise, save_path, i):
     #residual_images = concat_images(Image.fromarray(np.uint8(residual_image)), color_jet)
     color_jet.save(os.path.join(save_path, "{}residual.png".format(i + 1)))
 
-def imsave_deg(deg, save_path, i):
+def imsave_deg(deg, inputs, save_path, i):
+    inputs = inputs.cpu().numpy()
+
     jet_map = np.loadtxt('./images/jet_int.txt', dtype=np.int)
     down_matrix_path = '/data3/zhaoshuyi/Datasets/CAVE/Spc_P.mat'
-    down_matrix = sio.loadmat(down_matrix_path)['P']    #(3,31)
+    down_matrix = sio.loadmat(down_matrix_path)['P']    #(3,31)、
+
+    inputs_matrix = np.reshape(inputs, [inputs.shape[0], inputs.shape[1]*inputs.shape[2]])
+    inputs_rgb_matrix = np.matmul(down_matrix, inputs_matrix)
+    inputs_rgb = np.reshape(inputs_rgb_matrix, [3, inputs.shape[1], inputs.shape[2]]).transpose(1,2,0)
+    inputs_rgb = (inputs_rgb*255).clip(0, 255).astype(np.uint8)
+    #print(inputs_rgb.shape, inputs_rgb.dtype)
+    inputs_rgb = Image.fromarray(inputs_rgb)
+    inputs_rgb.save(os.path.join(save_path, "{}inputs.png".format(i + 1)))
 
     deg = deg.cpu().numpy()
     deg /= deg.max()
     deg_image = np.zeros((deg.shape[0], deg.shape[1]))
-    deg_image = (np.sum(deg, axis=0) * 512).clip(0, 255).astype(int)
+    deg_image = (np.sum(deg, axis=0) * 255).clip(0, 255).astype(int)
     color_jet = gray2color(deg_image, jet_map)
     color_jet = Image.fromarray(np.uint8(color_jet))
     #deg_images = concat_images(Image.fromarray(np.uint8(deg_image)), color_jet)
-    color_jet.save(os.path.join(save_path, "{}deg.png".format(i + 1)))
+    color_jet.save(os.path.join(save_path, "{}noise.png".format(i + 1)))
     '''deg_matrix = np.reshape(deg, [deg.shape[0], deg.shape[1]*deg.shape[2]])
     deg_rgb_matrix = np.matmul(down_matrix, deg_matrix)
     deg_rgb = np.reshape(deg_rgb_matrix, [3, deg.shape[1], deg.shape[2]]).transpose(1,2,0)

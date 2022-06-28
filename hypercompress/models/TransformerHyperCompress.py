@@ -186,21 +186,11 @@ class HyperEncoder(nn.Module):
 
     def __init__(self, channel_in=192, channel_out=192):
         super(HyperEncoder, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=channel_in,
-                               out_channels=channel_out,
-                               kernel_size=3,
-                               stride=1,
-                               padding=3 // 2)
-        self.conv2 = nn.Conv2d(in_channels=channel_out,
-                               out_channels=channel_out,
-                               kernel_size=5,
-                               stride=2,
-                               padding=5 // 2)
-        self.conv3 = nn.Conv2d(in_channels=channel_out,
-                               out_channels=channel_out,
-                               kernel_size=5,
-                               stride=2,
-                               padding=5 // 2)
+        self.conv1 = nn.Conv2d(channel_in, channel_out, 3, 1, 1)
+        self.conv2 = nn.Conv2d(channel_out, channel_out, 3, 1, 1)
+        self.conv3 = nn.Conv2d(channel_out, channel_out, 3, 2, 1)
+        self.conv4 = nn.Conv2d(channel_out, channel_out, 3, 1, 1)
+        self.conv5 = nn.Conv2d(channel_out, channel_out, 3, 2, 1)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -208,6 +198,37 @@ class HyperEncoder(nn.Module):
         x = self.conv2(x)
         x = nn.LeakyReLU(inplace=True)(x)
         x = self.conv3(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv4(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv5(x)
+        return x
+
+
+class HyperDecoder(nn.Module):
+
+    def __init__(self, channel_in=192, channel_mid=192):
+        super(HyperDecoder, self).__init__()
+
+        self.conv1 = nn.Conv2d(channel_in, channel_mid, 3, 1, 1)
+        self.conv2 = nn.Sequential(
+            nn.Conv2d(channel_mid, channel_mid * 2**2, 3, padding=1),
+            nn.PixelShuffle(2))
+        self.conv3 = nn.Conv2d(channel_mid, channel_mid*3//2, 3, 1, 1)
+        self.conv4 = nn.Sequential(
+            nn.Conv2d(channel_mid*3//2, channel_mid*3//2 * 2**2, 3, padding=1),
+            nn.PixelShuffle(2))
+        self.conv5 = nn.Conv2d(channel_mid*3//2, channel_mid*2, 3, 1, 1)
+    def forward(self, x):
+        x = self.conv1(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv2(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv3(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv4(x)
+        x = nn.LeakyReLU(inplace=True)(x)
+        x = self.conv5(x)
         return x
 
 
@@ -217,11 +238,27 @@ class TransformerHyperCompress(nn.Module):
         self.encoder = TransEncoder(channel_in, stage, num_blocks)
         self.decoder = TransDecoder(
             channel_in*int(pow(2, stage)), channel_in, stage, num_blocks[::-1])
+        self.hyper_encoder = HyperEncoder(channel_in*int(pow(2, stage)))
+        self.hyper_mean_decoder = HyperDecoder()
+        self.hyper_scale_decoder = HyperDecoder()
+
+        self.entropy_bottleneck = EntropyBottleneck(channels=channel_in*int(pow(2, stage)))
+        self.gaussian = GaussianConditional(None)
+    
+    def aux_loss(self):
+        """Return the aggregated loss over the auxiliary entropy bottleneck
+        module(s).  
+        """
+        aux_loss = sum(m.loss() for m in self.modules()
+                       if isinstance(m, EntropyBottleneck))
+        return aux_loss
 
     def forward(self, x):
         y = self.encoder(x)
         print("y: ", y.shape)
-        x_hat = self.decoder(y)
-        print("x_hat:", x_hat.shape)
+        '''x_hat = self.decoder(y)
+        print("x_hat:", x_hat.shape)'''
+        z = self.hyper_encoder(y)
+        print("z: ",z.shape)
         
-        return x_hat
+        return 

@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 import math
 import imgvision as iv
+import scipy.io as sio
 
 from torch.autograd import Variable
 from torch.utils.data import DataLoader
@@ -14,7 +15,7 @@ from collections import defaultdict
 from images.plot import imsave, imsave_deg
 
 from dataset_hsi import CAVE_Dataset
-from utils import AGWN_Batch, Spa_Downs
+from utils import AGWN_Batch, Spa_Downs, gasuss_noise
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
 from models.degradation import Degcompress
@@ -42,10 +43,11 @@ def test_checkpoint(model, test_loader, args):
             inputs = down_spa(img)'''
             #print(inputs.shape)
             if args.noise != 0:
-                inputs = AGWN_Batch(img, args.noise)
+                noise, inputs = gasuss_noise(img, 0 , args.noise)
                 inputs = Variable(inputs.to(args.device))
             else:
                 inputs = img
+            
             out = model(inputs)
             name = ''.join(data['name'])
             num_pixels = img.size(2) * img.size(3)
@@ -55,7 +57,7 @@ def test_checkpoint(model, test_loader, args):
             sumBpp += bpp
 
             x_hat = out["x_hat"].squeeze()
-            deg = out["deg"].squeeze()    
+                
 
             '''--------------------
             plot reconstructed_image and residual_image
@@ -65,13 +67,19 @@ def test_checkpoint(model, test_loader, args):
                     model_path, "checkpoint{}_{}N".format(args.checkpoint, args.noise))
                 if not os.path.exists(save_path):
                     os.mkdir(save_path)
-                imsave(x_hat, img.squeeze(), inputs.squeeze(), save_path, i)
-                imsave_deg(deg, save_path, i)
+                imsave(x_hat, img.squeeze(), save_path, i)
+                #deg = out["deg"].squeeze()
+                imsave_deg(noise.squeeze(), inputs.squeeze(), save_path, i)
+            
+            
+
+
             '''--------------------
             compute metric: PSNR, MS-SSIM, SAM
             --------------------'''
             x_hat = x_hat.permute(1,2,0).cpu().numpy()
             img = img.squeeze().permute(1,2,0).cpu().numpy()
+
             #PSNR = psnr(img, x_hat)
             Metric = iv.spectra_metric(img, x_hat)
             PSNR =  Metric.PSNR()
@@ -88,6 +96,19 @@ def test_checkpoint(model, test_loader, args):
                 name, PSNR, MS_SSIM, MS_SSIM_DB, SAM, bpp.item()))
             #f.write("img{} psnr:{:.6f} ms-ssim:{:.6f} bpp:{:.6f}\n".format(i+1, PSNR, MS_SSIM, bpp.item()))
             
+            '''--------------------
+            save recon
+            --------------------'''
+            if args.save:
+                D = {}
+                D['RE'] = x_hat
+                D['inputs'] = inputs.squeeze().permute(1,2,0).cpu().numpy()
+                D['ori'] = img
+                #print(D['inputs'].dtype,img.dtype)
+                save_path = os.path.join(model_path, "checkpoint{}_{}N/".format(args.checkpoint, args.noise))
+                if not os.path.exists(save_path):
+                    os.mkdir(save_path)
+                sio.savemat(save_path + name, D)
 
     print("Average psnr:{:.6f} ms-ssim:{:.6f} ms-ssim-DB:{:.6f} sam{:.4f} bpp:{:.6f}".format(
         sumPsnr / len(test_loader), sumMsssim / len(test_loader), sumMsssimDB / len(test_loader), sumSAM / len(test_loader), 
@@ -136,7 +157,8 @@ if __name__ == "__main__":
     parser.add_argument('--epoch_stride', type=int, default=100)
     parser.add_argument('--gpu', default="0")
     parser.add_argument('--plot', default=False)
-    parser.add_argument('--noise', type=int, default =0)
+    parser.add_argument('--noise', type=float, default =0)
+    parser.add_argument('--save', default=False)
     args = parser.parse_args()
 
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
