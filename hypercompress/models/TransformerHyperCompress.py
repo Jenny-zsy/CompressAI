@@ -245,12 +245,12 @@ class HyperDecoder(nn.Module):
 
 
 class ChannelTrans(nn.Module):
-    def __init__(self, channel_in=31, stage=4, num_blocks=[2, 4, 4, 6], num_slices=8):
+    def __init__(self, channel_in=31, stage=4, num_blocks=[1, 2, 2, 4], num_slices=8):
         super(ChannelTrans, self).__init__()
         self.num_slices = num_slices
         self.channel_N = channel_in*int(pow(2, stage))
-        self.max_support_slices =10
-        self.s = 4
+        self.max_support_slices =4
+        self.s = stage
 
         self.encoder = TransEncoder(channel_in, stage, num_blocks)
         self.decoder = TransDecoder(
@@ -263,7 +263,7 @@ class ChannelTrans(nn.Module):
         self.channel_p = self.hyper_mean_decoder.channel_out//num_slices
         self.mean_transforms = nn.ModuleList(
             nn.Sequential(
-                conv(self.hyper_mean_decoder.channel_out + self.channel_p*i, self.channel_p*12, stride=1, kernel_size=3),
+                conv(self.hyper_mean_decoder.channel_out + self.channel_p*min(i,self.max_support_slices), self.channel_p*12, stride=1, kernel_size=3),
                 nn.GELU(),
                 conv(self.channel_p*12, self.channel_p*8, stride=1, kernel_size=3),
                 nn.GELU(),
@@ -276,7 +276,7 @@ class ChannelTrans(nn.Module):
         )
         self.scale_transforms = nn.ModuleList(
             nn.Sequential(
-                conv(self.hyper_mean_decoder.channel_out + self.channel_p*i, self.channel_p*12, stride=1, kernel_size=3),
+                conv(self.hyper_mean_decoder.channel_out + self.channel_p*min(i,self.max_support_slices), self.channel_p*12, stride=1, kernel_size=3),
                 nn.GELU(),
                 conv(self.channel_p*12, self.channel_p*8, stride=1, kernel_size=3),
                 nn.GELU(),
@@ -289,7 +289,7 @@ class ChannelTrans(nn.Module):
         )
         self.lrp_transforms = nn.ModuleList(
             nn.Sequential(
-                conv(self.hyper_mean_decoder.channel_out + self.channel_p*(1+i), self.channel_p*12, stride=1, kernel_size=3),
+                conv(self.hyper_mean_decoder.channel_out + self.channel_p*min(i+1,self.max_support_slices+1), self.channel_p*12, stride=1, kernel_size=3),
                 nn.GELU(),
                 conv(self.channel_p*12, self.channel_p*8, stride=1, kernel_size=3),
                 nn.GELU(),
@@ -341,7 +341,7 @@ class ChannelTrans(nn.Module):
             mu = self.mean_transforms[slice_id](mean_support)
             #print("slice %d mu: "%slice_id, mu.shape)
             #mu = mu[:, :, :y_shape[0], :y_shape[1]]
-            ##print("slice %d mu: "%slice_index, mu.shape)
+            #print("slice %d mu: "%slice_index, mu.shape)
 
             scale_support = torch.cat([latent_scales] + support_slices, dim=1)
             #print("slice %d scale support: "%slice_id, scale_support.shape)

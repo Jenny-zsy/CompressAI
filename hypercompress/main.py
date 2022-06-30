@@ -170,13 +170,6 @@ def main(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = '../../compressresults/{}_{}_lambda{}_beta{}_bs{}_ReduceLR{}/'.format(
-        args.model, args.train_data,
-        args.lmbda, args.beta, args.batch_size * gpu_num, args.lr)
-    if not os.path.exists(save_path):
-        os.mkdir(save_path)
-    writter = SummaryWriter(os.path.join('../../compressresults/tensorboard', save_path.split('/')[-2]))
-
     # load dataset
     if args.train_data == 'CAVE':
         path = '/data3/zhaoshuyi/Datasets/CAVE/hsi/'
@@ -215,8 +208,19 @@ def main(args):
         model = SymmetricalTransFormer(channel_in=bands)
     elif args.model == 'channelTrans':
         model = ChannelTrans(channel_in=bands)
+        save_path = '../../compressresults/{}_{}_block{}_slice{}_lambda{}_beta{}_bs{}_ReduceLR{}/'.format(
+        args.model, args.train_data, args.block, args.slice,
+        args.lmbda, args.beta, args.batch_size * gpu_num, args.lr)
     model.to(args.device)
-    
+
+    save_path = '../../compressresults/{}_{}_lambda{}_beta{}_bs{}_ReduceLR{}/'.format(
+        args.model, args.train_data,
+        args.lmbda, args.beta, args.batch_size * gpu_num, args.lr)
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
+    writter = SummaryWriter(os.path.join(
+        '../../compressresults/tensorboard', save_path.split('/')[-2]))
+
     #criterion = RateDistortionLoss(args.lmbda)
     criterion = RateDistortion_SAM_Loss(args.lmbda, args.beta)
     criterion.cuda()
@@ -252,7 +256,6 @@ def main(args):
     valid_loss_sum = []
     for epoch in range(start_epoch, args.epochs):
 
-        
         writter.add_scalar('lr', optimizer.param_groups[0]['lr'], epoch)
 
         train_loss, train_mse, train_bpp, train_sam = train_epoch(args, model, criterion, optimizer,
@@ -269,11 +272,11 @@ def main(args):
         writter.add_scalars('loss', {'train': train_loss.cpu().detach().numpy(),
                                      'valid': valid_loss.cpu().detach().numpy()}, epoch)
         writter.add_scalars('bpp_loss', {'train': train_bpp.cpu().detach().numpy(),
-                                     'valid': valid_bpp.cpu().detach().numpy()}, epoch)
+                                         'valid': valid_bpp.cpu().detach().numpy()}, epoch)
         writter.add_scalars('mse_loss', {'train': train_mse.cpu().detach().numpy(),
-                                     'valid': valid_mse.cpu().detach().numpy()}, epoch)
+                                         'valid': valid_mse.cpu().detach().numpy()}, epoch)
         writter.add_scalars('sam_loss', {'train': train_sam.cpu().detach().numpy(),
-                                     'valid': valid_sam.cpu().detach().numpy()}, epoch)                           
+                                         'valid': valid_sam.cpu().detach().numpy()}, epoch)
 
         # save the model
         state = {
@@ -333,6 +336,10 @@ if __name__ == "__main__":
                         type=str,
                         default='cheng2020',
                         help='Model architecture')
+    parser.add_argument('--block', type=list,
+                        default=[1,1,1,1],
+                        help="how many blocks in encoder")
+    parser.add_argument('--slice', type=int, default=8)
     parser.add_argument('--channel_N', type=int, default=192)
     parser.add_argument('--channel_M', type=int, default=192)
     parser.add_argument('--epochs',
