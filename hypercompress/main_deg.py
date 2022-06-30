@@ -67,7 +67,7 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
     """
         Train model for one epoch
     """
-    noise = [0.0001, 0.001, 0.01, 0.1 ,1]
+    
 
     model.train()  # Set model to training mode
 
@@ -79,7 +79,7 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
 
     for batch, data in enumerate(train_dataloader):
 
-        noise, inputs = gasuss_noise_batch(data, 0 , noise[np.random.randint(0, 5, 1)[0]])
+        noise, inputs = gasuss_noise_batch(data)
         inputs = Variable(inputs.to(args.device))
 
         data = data.to(args.device)
@@ -198,7 +198,7 @@ def main(args):
 
     # load dataset
     if args.train_data == 'CAVE':
-        path = '/data3/zhaoshuyi/Datasets/CAVE/hsi/'
+        path = '/data1/zhaoshuyi/Datasets/CAVE/hsi/'
         bands = 31
         train_dataset = CAVE_Dataset(path,
                                      args.patch_size,
