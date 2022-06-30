@@ -15,7 +15,7 @@ from collections import defaultdict
 from images.plot import imsave, imsave_deg
 
 from dataset_hsi import CAVE_Dataset
-from utils import AGWN_Batch, Spa_Downs, gasuss_noise
+from utils import AGWN_Batch, Spa_Downs, gasuss_noise_batch, gasuss_noise
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
 from models.degradation import Degcompress
@@ -43,7 +43,7 @@ def test_checkpoint(model, test_loader, args):
             inputs = down_spa(img)'''
             #print(inputs.shape)
             if args.noise != 0:
-                noise, inputs = gasuss_noise(img, 0 , args.noise)
+                noise, inputs = gasuss_noise_batch(img, 0 , args.noise)
                 inputs = Variable(inputs.to(args.device))
             else:
                 inputs = img

@@ -172,6 +172,32 @@ def gasuss_noise(image, mean=0, var=0.001):
         out = torch.clip(out, low_clip, 1.0)  # clip函数将元素的大小限制在了low_clip和1之间 
     return noise, out
 
+def gasuss_noise_batch(image, mean=0, var=0.001): 
+    '''    添加高斯噪声    
+    :param image：原始图像    
+    :param mean: 均值    
+    :param var: 方差，越大，噪声越大    
+    :return:noise-添加的噪声，out-加噪后的图像    
+    '''
+    b,c,h,w = image.shape
+    noises=torch.from_numpy(np.zeros(image.shape)).type_as(image).cuda()
+    outs=torch.from_numpy(np.zeros(image.shape)).type_as(image).cuda()
+    for i in range(b):
+        img = image[i,:,:,:].cpu()
+
+        noise = np.random.normal(mean, var**0.5, [c,h,w])
+        noise =torch.from_numpy(noise) #创建一个均值为mean，方差为var呈高斯分布的图像矩阵
+        out = img + noise # 将噪声和原始图像进行相加得到加噪后的图像
+        if out.min()<0:        
+            low_clip = -1.    
+        else:        
+            low_clip = 0.    
+            out = torch.clip(out, low_clip, 1.0)  # clip函数将元素的大小限制在了low_clip和1之间 
+        noises[i] = noise
+        outs[i] = out
+    #print(noises.shape, outs.shape)
+    return noises, outs
+
 def AGWN_Batch(x, SNR):
     b, h, m, n = x.shape
     snr = 10**(SNR/10.0)

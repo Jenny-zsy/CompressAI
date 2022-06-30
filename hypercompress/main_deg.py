@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader
 from torch.autograd import Variable
 
 from ratedistortionloss import RateDistortion_SAM_Deg_Loss
-from utils import AverageMeter, AGWN_Batch
+from utils import AverageMeter, AGWN_Batch, gasuss_noise_batch
 
 from dataset_hsi import CAVE_Dataset
 
@@ -67,6 +67,7 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
     """
         Train model for one epoch
     """
+    noise = [0.0001, 0.001, 0.01, 0.1 ,1]
 
     model.train()  # Set model to training mode
 
@@ -78,8 +79,9 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
 
     for batch, data in enumerate(train_dataloader):
 
-        inputs = AGWN_Batch(data, np.random.randint(20, 40, 1)[0])
+        noise, inputs = gasuss_noise_batch(data, 0 , noise[np.random.randint(0, 5, 1)[0]])
         inputs = Variable(inputs.to(args.device))
+
         data = data.to(args.device)
 
         optimizer.zero_grad()
