@@ -1,4 +1,10 @@
+from PIL import Image
+import os
+import numpy as np
 import torch
+import scipy.io as sio
+import imgvision as iv
+from images.plot import imsave, imsave_deg
 from models.TransformerHyperCompress import TransformerHyperCompress
 from models.transformercompress import SymmetricalTransFormer
 from models.cheng2020attention import Cheng2020Attention, Cheng2020channel
@@ -7,10 +13,35 @@ from models.degradation import Degcompress
 
 
 if __name__ == "__main__":
-    net = TransformerHyperCompress(channel_in=31)
+    model = TransformerHyperCompress(channel_in=31)
     x = torch.randn(1, 31, 256, 256)
-    out = net(x)
-    #print(out.shape)
+    model.update(force=True)
+    out_enc = model.compress(x)
+    out_dec = model.decompress(out_enc["strings"], out_enc["shape"])
+    # print(out.shape)
+'''if __name__ == "__main__":
+    denoise = sio.loadmat("./photo_and_face_den.mat")
+    denoise =denoise['denoised4']
+
+    data = sio.loadmat("/data3/zhaoshuyi/compressresults/cheng2020_CAVE_chN192_chM192_lambda0.01_beta0.1_bs16_lr0.0001/checkpoint1000_0.0001N/chart_and_stuffed_toy_ms.mat")
+    inputs = data['inputs']
+    ori = data['ori']
+    recon =data['RE']
+    gt =sio.loadmat("/data3/zhaoshuyi/Datasets/CAVE/hsi/test/chart_and_stuffed_toy_ms.mat")['data']/1.9321
+    print(inputs.shape, ori.shape)
+    Metric = iv.spectra_metric( recon, ori)
+
+    #imsave(ori, gt.transpose(1,2,0), './', 1)
+
+    PSNR =  Metric.PSNR()
+    mse = Metric.MSE()
+    SAM = Metric.SAM()
+    SSIM = Metric.SSIM()
+    print(PSNR)
+    print(mse)
+    print(SAM)
+    print(SSIM)'''
+
 
 def AGWN_Batch(x, SNR):
     b, h, m, n = x.shape
@@ -23,31 +54,29 @@ def AGWN_Batch(x, SNR):
         x_.append(img + torch.randn_like(img) * torch.sqrt(npower))
     return torch.cat(x_, 0)
 
+
 def AGWN_np(x, SNR):
-    b,m,n = x.shape
+    b, m, n = x.shape
     snr = 10**(SNR/10.0)
     xpower = np.sum(x**2)/(b*m*n)
     npower = xpower/snr
-    return  x + np.array(torch.randn_like(torch.from_numpy(x)))*np.sqrt(npower)
+    return x + np.array(torch.randn_like(torch.from_numpy(x)))*np.sqrt(npower)
 
-import scipy.io as sio
-import numpy as np
-import os
-from PIL import Image
 
 def gray2color(gray_array, color_map):
-    
+
     rows, cols = gray_array.shape
     color_array = np.zeros((rows, cols, 3), np.uint8)
- 
+
     for i in range(0, rows):
         for j in range(0, cols):
-            #print(gray_array[i][j])
+            # print(gray_array[i][j])
             color_array[i][j] = color_map[gray_array[i][j]]
-    
+
     #color_image = Image.fromarray(color_array)
- 
+
     return color_array
+
 
 '''if __name__ == "__main__":
     img = sio.loadmat('/data3/zhaoshuyi/Datasets/CAVE/hsi/test/face_ms.mat')['data']/1.932

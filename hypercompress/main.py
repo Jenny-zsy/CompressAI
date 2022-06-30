@@ -20,6 +20,7 @@ from dataset_hsi import CAVE_Dataset
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
 from models.transformercompress import SymmetricalTransFormer
+from models.TransformerHyperCompress import ChannelTrans
 
 try:
     from tensorboardX import SummaryWriter
@@ -169,8 +170,8 @@ def main(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = '../../compressresults/{}_{}_chN{}_chM{}_lambda{}_beta{}_bs{}_ReduceLR{}/'.format(
-        args.model, args.train_data, args.channel_N, args.channel_M,
+    save_path = '../../compressresults/{}_{}_lambda{}_beta{}_bs{}_ReduceLR{}/'.format(
+        args.model, args.train_data,
         args.lmbda, args.beta, args.batch_size * gpu_num, args.lr)
     if not os.path.exists(save_path):
         os.mkdir(save_path)
@@ -212,6 +213,8 @@ def main(args):
                                    channel_out=bands)
     elif args.model == 'transformer':
         model = SymmetricalTransFormer(channel_in=bands)
+    elif args.model == 'channelTrans':
+        model = ChannelTrans(channel_in=bands)
     model.to(args.device)
     
     #criterion = RateDistortionLoss(args.lmbda)
