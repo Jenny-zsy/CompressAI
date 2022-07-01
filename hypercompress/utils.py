@@ -172,15 +172,15 @@ def gasuss_noise(image, mean=0, var=0.001):
         out = torch.clip(out, low_clip, 1.0)  # clip函数将元素的大小限制在了low_clip和1之间 
     return noise, out
 
-def gasuss_noise_batch(image): 
+def gasuss_noise_batch(image, var): 
     '''    添加高斯噪声    
     :param image：原始图像    
     :param mean: 均值    
     :param var: 方差，越大，噪声越大    
     :return:noise-添加的噪声，out-加噪后的图像    
     '''
-    noise = [0.0001, 0.001, 0.01, 0.1 ,1]
-    var = noise[np.random.randint(0,5,1)[0]]
+    noise = [0.0001, 0.001, 0.01, 0.1]
+    #var = noise[np.random.randint(0,4,1)[0]]
     #print(var)
 
     b,c,h,w = image.shape

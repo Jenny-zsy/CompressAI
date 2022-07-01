@@ -79,7 +79,7 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
 
     for batch, data in enumerate(train_dataloader):
 
-        noise, inputs = gasuss_noise_batch(data)
+        noise, inputs = gasuss_noise_batch(data, args.noise)
         inputs = Variable(inputs.to(args.device))
 
         data = data.to(args.device)
@@ -188,9 +188,9 @@ def main(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = '../../compressresults/Degcheng2020_{}_chN{}_chM{}_lambda{}_alpha{}_beta{}_bs{}_ReduceLR{}_L1/'.format(
+    save_path = '../../compressresults/Degcheng2020_{}_chN{}_chM{}_lambda{}_alpha{}_beta{}_bs{}_ReduceLR{}_N{}/'.format(
         args.train_data, args.channel_N, args.channel_M,
-        args.lmbda, args.alpha, args.beta, args.batch_size * gpu_num, args.lr)
+        args.lmbda, args.alpha, args.beta, args.batch_size * gpu_num, args.lr, args.noise)
     if not os.path.exists(save_path):
         os.mkdir(save_path)
     writter = SummaryWriter(os.path.join(
@@ -335,6 +335,7 @@ if __name__ == "__main__":
                         type=int,
                         default=128,
                         help="Stride when crop paches")
+    parser.add_argument('--noise', default=0.01, help="inputs noise")
     parser.add_argument("-n",
                         "--num-workers",
                         type=int,

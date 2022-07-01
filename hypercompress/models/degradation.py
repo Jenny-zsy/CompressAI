@@ -243,24 +243,24 @@ class DecoderwithDeg(nn.Module):
         #print(deg)
         #print(x)
         
-        x1 = (1-self.sig(deg))*x
+        x1 = x-deg
         x1 = self.att1(x1)
         x1 = self.RB1(x1)  
         x1 = self.RBU1(x1)
         #print("1: ", x1)
         
-        x2 = (1-self.sig(deg1))*x1
+        x2 = x1-deg1
         x2 = self.RB2(x2)
         x2 = self.RBU2(x2)
         #print("2: ", x.shape)
 
-        x3 = (1-self.sig(deg2))*x2
+        x3 = x2-deg2
         x3 = self.att2(x3)
         x3 = self.RB3(x3)
         x3 = self.RBU3(x3)
         #print("3: ", x.shape)
 
-        x4 = (1-self.sig(deg3))*x3
+        x4 = x3-deg3
         x4 = self.RB4(x4)
         x4 = self.conv(x4)
         #print("4: ", x.shape)
