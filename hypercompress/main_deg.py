@@ -188,7 +188,7 @@ def main(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = '../../compressresults/Degcheng2020_{}_chN{}_chM{}_lambda{}_alpha{}_beta{}_bs{}_ReduceLR{}_N{}/'.format(
+    save_path = '../../compressresults/Degcheng2020_{}_chN{}_chM{}_lambda{}_alpha{}_beta{}_bs{}_ReduceLR{}_Nrandom-2/'.format(
         args.train_data, args.channel_N, args.channel_M,
         args.lmbda, args.alpha, args.beta, args.batch_size * gpu_num, args.lr, args.noise)
     if not os.path.exists(save_path):
@@ -198,7 +198,7 @@ def main(args):
 
     # load dataset
     if args.train_data == 'CAVE':
-        path = '/data1/zhaoshuyi/Datasets/CAVE/hsi/'
+        path = '/data3/zhaoshuyi/Datasets/CAVE/hsi/'
         bands = 31
         train_dataset = CAVE_Dataset(path,
                                      args.patch_size,
@@ -285,7 +285,6 @@ def main(args):
                                          'valid': valid_sam.cpu().detach().numpy()}, epoch)
         writter.add_scalars('deg_loss', {'train': train_deg.cpu().detach().numpy(),
                                          'valid': valid_deg.cpu().detach().numpy()}, epoch)
-
         # save the model
         state = {
             'epoch': epoch,
@@ -335,7 +334,7 @@ if __name__ == "__main__":
                         type=int,
                         default=128,
                         help="Stride when crop paches")
-    parser.add_argument('--noise', default=0.01, help="inputs noise")
+    parser.add_argument('--noise', type=float,default=0.01, help="inputs noise")
     parser.add_argument("-n",
                         "--num-workers",
                         type=int,

@@ -43,7 +43,7 @@ def test_checkpoint(model, test_loader, args):
             inputs = down_spa(img)'''
             #print(inputs.shape)
             if args.noise != 0:
-                noise, inputs = gasuss_noise_batch(img, 0 , args.noise)
+                noise, inputs = gasuss_noise(img, 0 , args.noise)
                 inputs = Variable(inputs.to(args.device))
             else:
                 inputs = img
@@ -57,8 +57,7 @@ def test_checkpoint(model, test_loader, args):
             sumBpp += bpp
 
             x_hat = out["x_hat"].squeeze()
-                
-
+            
             '''--------------------
             plot reconstructed_image and residual_image
             --------------------'''
@@ -69,7 +68,7 @@ def test_checkpoint(model, test_loader, args):
                     os.mkdir(save_path)
                 imsave(x_hat, img.squeeze(), save_path, i)
                 #deg = out["deg"].squeeze()
-                imsave_deg(noise.squeeze(), inputs.squeeze(), save_path, i)
+                imsave_deg(out["deg"].squeeze(), inputs.squeeze(), save_path, i)
             
             
 

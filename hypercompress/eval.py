@@ -17,6 +17,7 @@ from dataset_hsi import CAVE_Dataset
 
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
+from models.NFC import NFC
 
 def test_checkpoint(model, test_loader, args):
     with torch.no_grad():

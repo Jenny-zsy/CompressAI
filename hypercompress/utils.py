@@ -180,7 +180,7 @@ def gasuss_noise_batch(image, var):
     :return:noise-添加的噪声，out-加噪后的图像    
     '''
     noise = [0.0001, 0.001, 0.01, 0.1]
-    #var = noise[np.random.randint(0,4,1)[0]]
+    var = noise[np.random.randint(0,4,1)[0]]
     #print(var)
 
     b,c,h,w = image.shape

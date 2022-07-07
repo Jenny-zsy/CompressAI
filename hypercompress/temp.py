@@ -5,19 +5,21 @@ import torch
 import scipy.io as sio
 import imgvision as iv
 from images.plot import imsave, imsave_deg
-from models.TransformerHyperCompress import TransformerHyperCompress
+from models.TransformerHyperCompress import ChannelTrans
 from models.transformercompress import SymmetricalTransFormer
 from models.cheng2020attention import Cheng2020Attention, Cheng2020channel
 from models.CA.hypercompress4 import HyperCompress4
 from models.degradation import Degcompress
+from models.NFC import NFC
 
 
 if __name__ == "__main__":
-    model = TransformerHyperCompress(channel_in=31)
+    model = NFC()
     x = torch.randn(1, 31, 256, 256)
-    model.update(force=True)
+    out = model(x)
+    '''model.update(force=True)
     out_enc = model.compress(x)
-    out_dec = model.decompress(out_enc["strings"], out_enc["shape"])
+    out_dec = model.decompress(out_enc["strings"], out_enc["shape"])'''
     # print(out.shape)
 '''if __name__ == "__main__":
     denoise = sio.loadmat("./photo_and_face_den.mat")

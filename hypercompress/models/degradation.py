@@ -243,29 +243,29 @@ class DecoderwithDeg(nn.Module):
         #print(deg)
         #print(x)
         
-        x1 = x-deg
+        x1 = x
         x1 = self.att1(x1)
         x1 = self.RB1(x1)  
         x1 = self.RBU1(x1)
         #print("1: ", x1)
         
-        x2 = x1-deg1
+        x2 = x1
         x2 = self.RB2(x2)
         x2 = self.RBU2(x2)
         #print("2: ", x.shape)
 
-        x3 = x2-deg2
+        x3 = x2
         x3 = self.att2(x3)
         x3 = self.RB3(x3)
         x3 = self.RBU3(x3)
         #print("3: ", x.shape)
 
-        x4 = x3-deg3
+        x4 = x3
         x4 = self.RB4(x4)
         x4 = self.conv(x4)
         #print("4: ", x.shape)
 
-        return x4, deg_mask
+        return x4-deg_mask, deg_mask
 
 class Decoder(nn.Module):
 
@@ -286,14 +286,7 @@ class Decoder(nn.Module):
             nn.Conv2d(channel_mid, channel_out * 2**2, 3, padding=1),
             nn.PixelShuffle(2))
             
-    def forward(self, x, deg):
-
-        deg1 = self.conv1(deg)
-        deg2 = self.conv2(deg1)
-        deg3 = self.conv2(deg2)
-        deg4 = self.conv4(deg3)
-        deg_mask = self.conv5(deg4)
-
+    def forward(self, x):
         x = self.att1(x)
         x = self.RB1(x)
         x = self.RBU1(x)
@@ -464,14 +457,14 @@ class Degcompress(nn.Module):
         self.encoder = Encoder(channel_in=channel_in,
                                channel_mid=channel_N,
                                channel_out=channel_M)
-        self.decoder = DecoderwithDeg(channel_in=channel_M, channel_out=channel_out)
+        self.decoder = Decoder(channel_in=channel_M, channel_out=channel_out)
 
         self.hyper_encoder = HyperEncoder(channel_in=channel_M,
                                           channel_out=channel_N)
         self.hyper_decoder = HyperDecoder(channel_in=channel_N,
                                           channel_mid=channel_M)
         self.deg_encode = DegEncoder(channel_in=channel_in, channel_out=channel_M)
-        #self.deg_decoder = DegDecoder(channel_in=channel_M, channel_out=channel_out)
+        self.deg_decoder = DegDecoder(channel_in=channel_M, channel_out=channel_out)
         self.entropy_parameters = EntropyParameters(channel_in=channel_M * 4)
         self.context = ContextPrediction(channel_in=channel_M)
         self.hyper_entropy_bottleneck = EntropyBottleneck(channels=channel_N)
@@ -502,6 +495,7 @@ class Degcompress(nn.Module):
         #print(deg.shape)
         deg_hat, deg_likelihoods = self.deg_entropy_bottleneck(deg)
         #print(deg_hat.shape, deg_likelihoods.shape)
+        deg = self.deg_decoder(deg_hat)
 
         y_hat = self.gaussian.quantize(
             y, "noise" if self.training else "dequantize")
@@ -516,8 +510,9 @@ class Degcompress(nn.Module):
         _, y_likelihoods = self.gaussian(y, scales_hat, means=means_hat)
         #print("y_likelihoods:", y_likelihoods.shape)
 
-        x_hat, deg = self.decoder(y_hat, deg_hat)
+        x_hat = self.decoder(y_hat)
         #print("x_hat:", x_hat.shape)
+        x_hat = x_hat-deg
         return {
             "x_hat": x_hat,
             "deg": deg,

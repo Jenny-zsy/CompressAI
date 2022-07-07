@@ -194,6 +194,9 @@ def main(args):
         num_workers=args.num_workers,
         shuffle=False,
     )
+    save_path = '../../compressresults/{}_{}_lambda{}_beta{}_bs{}_ReduceLR{}/'.format(
+        args.model, args.train_data,
+        args.lmbda, args.beta, args.batch_size * gpu_num, args.lr)
     if args.model == 'mbt':
         model = ContextHyperprior(channel_in=bands,
                                   channel_N=args.channel_N,
@@ -213,9 +216,7 @@ def main(args):
         args.lmbda, args.beta, args.batch_size * gpu_num, args.lr)
     model.to(args.device)
 
-    save_path = '../../compressresults/{}_{}_lambda{}_beta{}_bs{}_ReduceLR{}/'.format(
-        args.model, args.train_data,
-        args.lmbda, args.beta, args.batch_size * gpu_num, args.lr)
+    
     if not os.path.exists(save_path):
         os.mkdir(save_path)
     writter = SummaryWriter(os.path.join(
