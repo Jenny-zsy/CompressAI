@@ -35,7 +35,7 @@ def plot_cmap_jet():
     fig = plt(gradient, aspect='auto', cmap=plt.get_cmap('jet'))
 
 def imsave(recon, origin, save_path, i):
-    jet_map = np.loadtxt('/data1/zhaoshuyi/AIcompress/baseline/images/jet_int.txt', dtype=np.int)
+    jet_map = np.loadtxt('./images/jet_int.txt', dtype=np.int)
     
     reconstructed_image = transforms.ToPILImage(mode='RGB')(recon.squeeze())
     reconstructed_image.save(

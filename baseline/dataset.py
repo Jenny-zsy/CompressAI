@@ -9,75 +9,6 @@ from torchvision import transforms
 from PIL import Image
 from torch.utils.data import Dataset
 
-class h5dataset_train(Dataset):
-    """Load database. 
-
-    Args:
-        root (string): root directory of the h5 file
-        mode: "train" or "valid"
-    """
-
-    def __init__(self, mode, h5path):
-        self.mode = mode
-        self.h5path = h5path
-        self.h5f = h5py.File(h5path, 'r')
-        self.keys = list(self.h5f.keys())
-        '''if self.mode == 'train':
-            random.shuffle(self.keys)
-        else:
-            self.keys.sort()
-        '''
-    def __getitem__(self, index):
-        """
-        Args:
-            index (int): Index
-        """
-        key = self.keys[index]
-        #key = '{}'.format(index)
-        print(key)
-        data = np.array(self.h5f[key])
-        img = torch.Tensor(data)
-        #print(img.shape)
-        return img
-
-    def __len__(self):
-        #return len(self.keys)
-        return 332345
-
-class h5dataset(Dataset):
-    """Load database. 
-
-    Args:
-        root (string): root directory of the h5 file
-        mode: "train" or "valid"
-    """
-
-    def __init__(self, mode, h5path):
-
-        self.mode = mode
-        self.h5f = h5py.File(h5path, 'r')
-        self.keys = list(self.h5f.keys())
-        if self.mode == 'train':
-            random.shuffle(self.keys)
-        else:
-            self.keys.sort()
-
-    def __getitem__(self, index):
-        """
-        Args:
-            index (int): Index
-        """
-        print(len(self.keys))
-        key = self.keys[index]
-        #print(key)
-        data = np.array(self.h5f[key])
-        img = torch.Tensor(data)
-        #print(img.shape)
-        return img
-
-    def __len__(self):
-        return len(self.keys)
-
 
 class TestDataset(Dataset):
     def __init__(self, data_dir):
@@ -119,14 +50,16 @@ class ImageFolder(Dataset):
         split (string): split mode ('train' or 'val')
     """
 
-    def __init__(self, root, transform=None, split="train"):
+    def __init__(self, root, patch_size, split="train"):
         splitdir = Path(root) / split
 
         if not splitdir.is_dir():
             raise RuntimeError(f'Invalid directory "{root}"')
 
         self.samples = [f for f in splitdir.iterdir() if f.is_file()]
-
+        transform = transforms.Compose(
+        [transforms.RandomCrop(patch_size),
+         transforms.ToTensor()])
         self.transform = transform
 
     def __getitem__(self, index):
@@ -145,19 +78,47 @@ class ImageFolder(Dataset):
     def __len__(self):
         return len(self.samples)
 
-from torchvision import transforms
+class CUB_data(Dataset):
+
+
+    def __init__(self, root, transform=None, mode="train"):
+        self.root = root
+        f_dir = os.path.join(root, '{}.txt'.format(mode))
+        f = open(f_dir, 'r')
+        self.datalist = f.readlines()
+        #self.samples = [f for f in splitdir.iterdir() if f.is_file()]
+
+        self.transform = transform
+
+    def __getitem__(self, index):
+        img_path = os.path.join(self.root+'images', self.datalist[index][:-1])
+        img = Image.open(img_path).convert("RGB")
+        noise_path = os.path.join(self.root+'noise', self.datalist[index][:-1])
+        noise = img = Image.open(noise_path).convert("RGB")
+        if self.transform:
+            return self.transform(img), self.transform(noise)
+        return img
+
+    def __len__(self):
+        return len(self.datalist)
+ 
+
+
 from torch.utils.data import DataLoader
 
 if __name__ == "__main__":
     #h5path='/data1/zhaoshuyi/AIcompress/baseline/data/train_ImageNet.h5'
-   
-    train_dataset = h5dataset(mode="test", h5path='/data1/zhaoshuyi/AIcompress/baseline/data/train_CLIC.h5')
+    transforms = transforms.Compose(
+        [transforms.RandomCrop(128),
+         transforms.ToTensor()])
+    path = '/data3/zhaoshuyi/Datasets/CUB_200_2011/'
+    train_dataset = CUB_data(path, transform=transforms,mode="valid")
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=4,
         num_workers=1,
         shuffle=False,
     )
-    for batch, (inputs) in enumerate(train_dataloader):
-        print(inputs.shape)
+    for batch, (inputs, noise) in enumerate(train_dataloader):
+        print(inputs.shape, noise.shape)
         break

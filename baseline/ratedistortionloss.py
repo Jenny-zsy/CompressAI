@@ -33,3 +33,27 @@ class RateDistortionLoss(nn.Module):
 
         return out
 
+class RateDistortion_Loss(nn.Module):
+    """Custom rate distortion loss with a Lagrangian parameter."""
+
+    def __init__(self, alpha=1e-2, beta=1e-2):
+        super().__init__()
+        self.mse = nn.MSELoss()
+        self.alpha = alpha
+        self.beta = beta
+
+    def forward(self, output, target):
+        N, _, H, W = target.size()
+        out = {}
+        num_pixels = N * H * W
+
+        out["bpp_loss"] = sum(
+            (torch.log(likelihoods).sum() / (-math.log(2) * num_pixels))
+            for likelihoods in output["likelihoods"].values()
+        )
+        out["logdet"] = output["logdet"].sum() / (-math.log(2) * num_pixels*3)
+        out["mse_loss"] = self.mse(output["x_hat"], target)
+        out["loss"] =  255**2 * out["mse_loss"] + self.alpha *out["bpp_loss"] + self.beta*out["logdet"]
+
+        return out
+

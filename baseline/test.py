@@ -1,3 +1,4 @@
+from audioop import reverse
 import os
 import json
 import argparse
@@ -8,72 +9,63 @@ import torch.nn.functional as F
 import math
 
 from torch.utils.data import DataLoader
-from pytorch_msssim import ms_ssim
+from torchvision import transforms
 from collections import defaultdict
 from images.plot import imsave
 
-from dataset import TestDataset
-from dataset_hsi import CAVE_Dataset
-
-from models.ContextHyperprior import ContextHyperprior
-from models.cheng2020attention import Cheng2020Attention
+from dataset import  CUB_data
+from models.NFC import FlowNet
+from utils import *
 
 def psnr(a: torch.Tensor, b: torch.Tensor) -> float:
     mse = F.mse_loss(a, b).item()
     return -10 * math.log10(mse)
 
 
-def test_checkpoint(model, test_loader, args):
+def test_checkpoint(epoch, model, test_loader, args):
+    num = 0
     with torch.no_grad():
         model.eval()
 
-        sumBpp = 0
         sumPsnr = 0
-        sumMsssim = 0
-        sumMsssimDB = 0
+        sumssim = 0
 
-        for i, img in enumerate(test_loader):
-            img = img.to(args.device)
-            out = model(img)
-
-            num_pixels = img.size(2) * img.size(3)
-            bpp = sum(
-                (torch.log(likelihoods).sum() / (-math.log(2) * num_pixels))
-                for likelihoods in out["likelihoods"].values())
-            sumBpp += bpp
-
-            x_hat = out["x_hat"]
-            PSNR = psnr(img, x_hat)
-            MS_SSIM = ms_ssim(img, x_hat, data_range=1.0)
-            MS_SSIM_DB = -10 * (torch.log(1-MS_SSIM) / np.log(10))
+        for (GT, noise) in test_loader:
+            num += 1
+            GT, noise = GT.to(args.device), noise.to(args.device)
+            out, bpd = model(noise)
+            C = out.shape[1]
+            noise, out_new = out.narrow(1, 0, C//4), out.narrow(1, C//4, C//4*3)
+            out_new = torch.cat((torch.zeros(noise.shape).cuda(), out_new), 1)
+            recon = model(out_new, reverse=True)
+            #recon = model(out, reverse=True)
+        
+            GT, recon = GT.squeeze(0)*255, recon.squeeze(0)*255
+            PSNR = calculate_psnr(GT, recon)
             sumPsnr += PSNR
-            sumMsssim += MS_SSIM.item()
-            sumMsssimDB += MS_SSIM_DB.item()
+            SSIM = calculate_ssim(GT, recon)
+            sumssim += SSIM
 
-            print("img{} psnr:{:.6f} ms-ssim:{:.6f} ms-ssim-DB:{:.6f} bpp:{:.6f}".format(
-                i + 1, PSNR, MS_SSIM, MS_SSIM_DB, bpp.item()))
+            print("img{}/{} psnr:{:.6f} ssim:{:.6f}".format(num, len(test_loader),PSNR, SSIM))
             #f.write("img{} psnr:{:.6f} ms-ssim:{:.6f} bpp:{:.6f}\n".format(i+1, PSNR, MS_SSIM, bpp.item()))
             '''--------------------
             plot reconstructed_image and residual_image
             --------------------'''
-            if args.ifplot:
+            if epoch==args.endepoch and args.ifplot:
                 save_path = os.path.join(
                     model_path, "checkpoint{}".format(args.checkpoint))
                 if not os.path.exists(save_path):
                     os.mkdir(save_path)
-                imsave(x_hat, img, save_path, i)
+                imsave(recon, GT, save_path, i)
 
-    print("Average psnr:{:.6f} ms-ssim:{:.6f} ms-ssim-DB:{:.6f} bpp:{:.6f}".format(
-        sumPsnr / len(test_loader), sumMsssim / len(test_loader), sumMsssimDB / len(test_loader),
-        sumBpp / len(test_loader)))
+    print("Average psnr:{:.6f} ms-ssim:{:.6f}".format(
+        sumPsnr / len(test_loader), sumssim / len(test_loader)))
     #f.write("Average psnr:{:.6f} ms-ssim:{:.6f} bpp:{:.6f}\n".format(sumPsnr/len(file_names), sumMsssim/len(file_names), sumBpp/len(file_names)))
 
     return {
         "psnr": sumPsnr / len(test_loader),
-        "ms-ssim": sumMsssim / len(test_loader),
-        "ms-ssim-DB": sumMsssimDB / len(test_loader),
-        "bpp": sumBpp.item() / len(test_loader),
-    }
+        "ms-ssim": sumssim / len(test_loader),
+        }
 
 
 class MyEncoder(json.JSONEncoder):
@@ -92,20 +84,24 @@ class MyEncoder(json.JSONEncoder):
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Process some integers.')
-    parser.add_argument('--model',
-                        type=str,
-                        default='mbt',
-                        help='Model architecture')
-    parser.add_argument('--test_data', default='Kodak', help='test dataset')
-    parser.add_argument('--model_path', default="/data1/zhaoshuyi/AIcompress/baseline/results/lr0.0001_bs32_lambda0.01/", help='checkpoint path')
-    parser.add_argument('--channel_N', type=int, default=128)
-    parser.add_argument('--channel_M', type=int, default=192)
-    parser.add_argument('--epochs',
+    
+    parser.add_argument('--test_data', default='CUB', help='test dataset')
+    parser.add_argument("--patch-size",
                         type=int,
-                        default=200,
+                        default=64,
+                        help="Size of the patches to be cropped")
+    parser.add_argument('--model_path', default="/data1/zhaoshuyi/AIcompress/baseline/results/lr0.0001_bs32_lambda0.01/", help='checkpoint path')
+    parser.add_argument('--endepoch',
+                        type=int,
+                        default=150,
+                        help='number of epoch for eval')
+    parser.add_argument('--startepoch',
+                        type=int,
+                        default=0,
                         help='number of epoch for eval')
     parser.add_argument('--gpu', default="0")
     parser.add_argument('--ifplot', default=False)
+    parser.add_argument('--checkpoint', default=False)
     args = parser.parse_args()
 
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -113,33 +109,45 @@ if __name__ == "__main__":
     USE_CUDA = torch.cuda.is_available()
     args.device = torch.device("cuda:0" if USE_CUDA else "cpu")
 
-    img_path = "/data1/zhaoshuyi/AIcompress/compression_Liu/data/images/"
-    test_dataset = TestDataset(data_dir=img_path)
+    img_path = '/data3/zhaoshuyi/Datasets/CUB_200_2011/'
+    test_transforms = transforms.Compose(
+        [transforms.CenterCrop(args.patch_size),
+         transforms.ToTensor(), 
+         preprocess])
+    test_dataset = CUB_data(img_path, mode="test", transform=test_transforms)
     test_loader = DataLoader(dataset=test_dataset,
                              shuffle=False,
                              batch_size=1,
                              pin_memory=True)
 
     model_path = args.model_path
-    if args.model == 'mbt':
-        model = ContextHyperprior( channel_N=args.channel_N, channel_M=args.channel_M)
-    else:
-        model = Cheng2020Attention(channel_N=args.channel_N, channel_M=args.channel_M)
+    model = FlowNet(3, patch_size=args.patch_size)
     results = defaultdict(list)
-    for i in range(0, args.epochs + 1, 20):
-        if i == 0:
-            continue
+    if args.checkpoint:
         checkpoint = torch.load(
-            os.path.join(model_path, 'checkpoint_{}.pth'.format(i)))
+            os.path.join(model_path, 'lastcheckpoint.pth'))
         model.load_state_dict(checkpoint['state_dict'])
         model.to(args.device)
-        args.checkpoint = i
+        i = checkpoint['epoch']
 
-        metrics = test_checkpoint(model, test_loader, args)
+        metrics = test_checkpoint(i, model, test_loader, args)
         for k, v in metrics.items():
             results[k].append(v)
-        
-        torch.cuda.empty_cache()
+    else:
+        for i in range(args.startepoch, args.endepoch + 1, 50):
+            if i == 0:
+                continue
+            checkpoint = torch.load(
+                os.path.join(model_path, 'checkpoint_{}.pth'.format(i)))
+            model.load_state_dict(checkpoint['state_dict'])
+            model.to(args.device)
+            args.checkpoint = i
+
+            metrics = test_checkpoint(i, model, test_loader, args)
+            for k, v in metrics.items():
+                results[k].append(v)
+            
+            torch.cuda.empty_cache()
 
     description = (args.test_data)
     output = {

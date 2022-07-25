@@ -41,7 +41,7 @@ import torch.nn.functional as F
 
 from torch import Tensor
 
-from models._CXX import pmf_to_quantized_cdf as _pmf_to_quantized_cdf
+from compressai._CXX import pmf_to_quantized_cdf as _pmf_to_quantized_cdf
 from models.bound_ops import LowerBound
 
 class _EntropyCoder:

@@ -1,3 +1,4 @@
+from audioop import reverse
 from email.policy import default
 from builtins import type
 import os
@@ -11,23 +12,22 @@ import matplotlib.pyplot as plt
 from torch import optim
 from torch.utils.data import DataLoader
 from torch.autograd import Variable
+from models.NFC import NFC
 
-from ratedistortionloss import RateDistortion_SAM_Deg_Loss
-from utils import AverageMeter, AGWN_Batch, gasuss_noise_batch
+from ratedistortionloss import RateDistortionLoss, RateDistortion_Loss
+from utils import AverageMeter
 
-from dataset_hsi import CAVE_Dataset
+from dataset import *
 
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
-from models.transformercompress import SymmetricalTransFormer
-from models.degradation import Degcompress
+from models.NFC import NFC
 
 try:
     from tensorboardX import SummaryWriter
 except ModuleNotFoundError:
     from torch.utils.tensorboard import SummaryWriter
 
-torch.set_num_threads(1)
 
 def configure_optimizers(net, args):
     """Separate parameters for the main optimizer and the auxiliary optimizer.
@@ -68,31 +68,26 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
     """
         Train model for one epoch
     """
-    
 
     model.train()  # Set model to training mode
 
     loss = AverageMeter()
     bpp_loss = AverageMeter()
     mse_loss = AverageMeter()
-    sam_loss = AverageMeter()
-    deg_loss = AverageMeter()
-
-    for batch, data in enumerate(train_dataloader):
-
-        noise, inputs = gasuss_noise_batch(data, args.noise)
+    logdet = AverageMeter()
+    for batch, inputs in enumerate(train_dataloader):
         inputs = Variable(inputs.to(args.device))
-
-        data = data.to(args.device)
 
         optimizer.zero_grad()
 
         # forward
         out = model(inputs)
-
-        out_criterion = criterion(out, data, inputs)
+        with torch.no_grad():
+            out["x_hat"] = model.encoder(out["y_hat"], reverse=True)
+        out_criterion = criterion(out, inputs)
 
         # backward
+        #print(out_criterion["loss"])
         out_criterion["loss"].backward()
         nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
@@ -104,8 +99,7 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
         loss.update(out_criterion["loss"])
         bpp_loss.update(out_criterion["bpp_loss"])
         mse_loss.update(out_criterion["mse_loss"])
-        sam_loss.update(out_criterion["sam_loss"])
-        deg_loss.update(out_criterion["deg_loss"])
+        logdet.update(out_criterion["logdet"])
 
         # print out loss and visualise results
         if batch % 10 == 0:
@@ -114,20 +108,18 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
                     epoch, epochs, batch, len(train_dataloader)).ljust(30),
                 'Loss: %.4f'.ljust(14) % (out_criterion["loss"]),
                 'mse_loss: %.6f'.ljust(19) % (out_criterion["mse_loss"]),
-                'deg_loss: %.6f'.ljust(19) % (out_criterion["deg_loss"]),
-                'sam_loss: %.4f'.ljust(19) % (out_criterion["sam_loss"]),
+                'logdet: %.4f'.ljust(19) % (out_criterion["logdet"]),
                 'bpp_loss: %.4f'.ljust(17) % (out_criterion["bpp_loss"]),
                 'aux_loss: %.2f'.ljust(17) % (aux_loss.item()))
             f.write('Epoch: {}/{}:[{}]/[{}]'.format(
                 epoch, epochs, batch, len(train_dataloader)).ljust(30))
             f.write('Loss: %.4f'.ljust(14) % (out_criterion["loss"]))
             f.write('mse_loss: %.6f'.ljust(19) % (out_criterion["mse_loss"]))
-            f.write('deg_loss: %.6f'.ljust(19) % (out_criterion["deg_loss"]))
-            f.write('sam_loss: %.4f'.ljust(19) % (out_criterion["sam_loss"]))
+            f.write('logdet: %.4f'.ljust(19) % (out_criterion["logdet"]))
             f.write('bpp_loss: %.4f'.ljust(17) % (out_criterion["bpp_loss"]))
             f.write('aux_loss: %.2f\n'.ljust(17) % (aux_loss.item()))
 
-    return loss.avg, mse_loss.avg, bpp_loss.avg, sam_loss.avg, deg_loss.avg
+    return loss.avg, mse_loss.avg, bpp_loss.avg, logdet.avg
 
 
 def test_epoch(args, model, criterion, test_dataloader, epoch, f):
@@ -136,40 +128,29 @@ def test_epoch(args, model, criterion, test_dataloader, epoch, f):
     loss = AverageMeter()
     bpp_loss = AverageMeter()
     mse_loss = AverageMeter()
-    sam_loss = AverageMeter()
-    deg_loss = AverageMeter()
 
     with torch.no_grad():
-        for data in test_dataloader:
-
-            inputs = AGWN_Batch(data, np.random.randint(20, 40, 1)[0])
+        for inputs in test_dataloader:
             inputs = Variable(inputs.to(args.device))
-            data = data.to(args.device)
-
             out = model(inputs)
-            out_criterion = criterion(out, data, inputs)
+            out["x_hat"] = model.encoder(out["y_hat"], reverse=True)
+            out_criterion = criterion(out, inputs)
 
             bpp_loss.update(out_criterion["bpp_loss"])
             mse_loss.update(out_criterion["mse_loss"])
-            sam_loss.update(out_criterion["sam_loss"])
-            deg_loss.update(out_criterion["deg_loss"])
             loss.update(out_criterion["loss"])
 
     f.write('Epoch {} valid '.format(epoch).ljust(30))
     f.write('Loss: %.4f'.ljust(14) % (loss.avg))
     f.write('mse_loss: %.6f'.ljust(19) % (mse_loss.avg))
-    f.write('deg_loss: %.6f'.ljust(19) % (deg_loss.avg))
-    f.write('sam_loss: %.6f'.ljust(19) % (sam_loss.avg)) 
     f.write('bpp_loss: %.4f\n'.ljust(17) % (bpp_loss.avg))
 
     print('Epoch {} valid '.format(epoch).ljust(30),
           'Loss: %.4f'.ljust(14) % (loss.avg),
           'mse_loss: %.6f'.ljust(19) % (mse_loss.avg),
-          'deg_loss: %.6f'.ljust(19) % (deg_loss.avg),
-          'sam_loss: %.4f'.ljust(19) % (sam_loss.avg),
           'bpp_loss: %.4f'.ljust(17) % (bpp_loss.avg))
 
-    return loss.avg, mse_loss.avg, bpp_loss.avg, sam_loss.avg, deg_loss.avg
+    return loss.avg, mse_loss.avg, bpp_loss.avg
 
 
 def plot(y1, y2, label, outf):
@@ -189,24 +170,11 @@ def main(args):
     gpu_num = len(args.gpus.split(','))
     device_ids = list(range(gpu_num))
 
-    save_path = '../../compressresults/Degcheng2020_{}_chN{}_chM{}_lambda{}_alpha{}_beta{}_bs{}_ReduceLR{}_Nrandom-2/'.format(
-        args.train_data, args.channel_N, args.channel_M,
-        args.lmbda, args.alpha, args.beta, args.batch_size * gpu_num, args.lr, args.noise)
-    if not os.path.exists(save_path):
-        os.mkdir(save_path)
-    writter = SummaryWriter(os.path.join(
-        '../../compressresults/tensorboard', save_path.split('/')[-2]))
-
     # load dataset
-    if args.train_data == 'CAVE':
-        path = '/data3/zhaoshuyi/Datasets/CAVE/hsi/'
-        bands = 31
-        train_dataset = CAVE_Dataset(path,
-                                     args.patch_size,
-                                     args.stride,
-                                     data_aug=True if args.aug == 'aug' else False,
-                                     mode='train')
-        valid_dataset = CAVE_Dataset(path, args.patch_size, mode='valid')
+    if args.train_data == 'CLIC':
+        path = '/data3/zhaoshuyi/Datasets/CLIC2020/'
+        train_dataset = ImageFolder(path, args.patch_size, split='train')
+        valid_dataset = ImageFolder(path, args.patch_size, split='valid')
 
     # create data loader
     train_dataloader = DataLoader(
@@ -221,15 +189,20 @@ def main(args):
         num_workers=args.num_workers,
         shuffle=False,
     )
-
-    model = Degcompress(channel_in=bands,
-                        channel_N=args.channel_N,
-                        channel_M=args.channel_M,
-                        channel_out=bands)
+    save_path = '../../compressresults/{}_{}alpha{}_beta{}_bs{}_ReduceLR{}_block{}_step{}_{}_{}/'.format(
+        args.model, args.train_data,
+        args.alpha, args.beta, args.batch_size * gpu_num, args.lr, args.block, args.step, args.flow_permutation, args.flow_coupling+args.LU_decomposed if args.flow_coupling == 'affine' else args.flow_coupling)
+    model = NFC(block_num=args.block, step_num=args.step,patch_size=args.patch_size, flow_permutation=args.flow_permutation,
+                flow_coupling=args.flow_coupling, LU_decomposed=args.LU_decomposed)
     model.to(args.device)
 
+    if not os.path.exists(save_path):
+        os.mkdir(save_path)
+    writter = SummaryWriter(os.path.join(
+        '../../compressresults/tensorboard', save_path.split('/')[-2]))
+
     #criterion = RateDistortionLoss(args.lmbda)
-    criterion = RateDistortion_SAM_Deg_Loss(args.lmbda, args.alpha, args.beta)
+    criterion = RateDistortion_Loss(args.alpha, args.beta)
     criterion.cuda()
 
     optimizer, aux_optimizer = configure_optimizers(model, args)
@@ -265,27 +238,25 @@ def main(args):
 
         writter.add_scalar('lr', optimizer.param_groups[0]['lr'], epoch)
 
-        train_loss, train_mse, train_bpp, train_sam, train_deg = train_epoch(args, model, criterion, optimizer,
-                                                                  aux_optimizer, train_dataloader, epoch,
-                                                                  args.epochs, f)
-        valid_loss, valid_mse, valid_bpp, valid_sam, valid_deg = test_epoch(args, model, criterion, valid_dataloader,
-                                                                 epoch, f)
+        train_loss, train_mse, train_bpp, logdet = train_epoch(args, model, criterion, optimizer,
+                                                               aux_optimizer, train_dataloader, epoch,
+                                                               args.epochs, f)
+        valid_loss, valid_mse, valid_bpp = test_epoch(args, model, criterion, valid_dataloader,
+                                                      epoch, f)
         print("第%d个epoch的学习率：%f" % (epoch, optimizer.param_groups[0]['lr']))
         lr_scheduler.step(valid_loss)
 
         train_loss_sum.append(train_loss.cpu().detach().numpy())
         valid_loss_sum.append(valid_loss.cpu().detach().numpy())
 
-        writter.add_scalars('loss', {'train': train_loss.cpu().detach().numpy(),
-                                     'valid': valid_loss.cpu().detach().numpy()}, epoch)
-        writter.add_scalars('bpp_loss', {'train': train_bpp.cpu().detach().numpy(),
-                                         'valid': valid_bpp.cpu().detach().numpy()}, epoch)
-        writter.add_scalars('mse_loss', {'train': train_mse.cpu().detach().numpy(),
-                                         'valid': valid_mse.cpu().detach().numpy()}, epoch)
-        writter.add_scalars('sam_loss', {'train': train_sam.cpu().detach().numpy(),
-                                         'valid': valid_sam.cpu().detach().numpy()}, epoch)
-        writter.add_scalars('deg_loss', {'train': train_deg.cpu().detach().numpy(),
-                                         'valid': valid_deg.cpu().detach().numpy()}, epoch)
+        writter.add_scalars('loss/total', {'train': train_loss.cpu().detach().numpy(),
+                                           'valid': valid_loss.cpu().detach().numpy()}, epoch)
+        writter.add_scalars('loss/bpp_loss', {'train': train_bpp.cpu().detach().numpy(),
+                                              'valid': valid_bpp.cpu().detach().numpy()}, epoch)
+        writter.add_scalars('loss/mse_loss', {'train': train_mse.cpu().detach().numpy(),
+                                              'valid': valid_mse.cpu().detach().numpy()}, epoch)
+        writter.add_scalar('loss/logdet', logdet.cpu().detach().numpy(), epoch)
+
         # save the model
         state = {
             'epoch': epoch,
@@ -320,8 +291,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--train_data',
                         type=str,
-                        choices=['CAVE'],
-                        default='CAVE',
+                        choices=['ImageNet', 'CLIC'],
+                        default='CLIC',
                         help='data for training')
     parser.add_argument('--aug',
                         type=str,
@@ -335,7 +306,6 @@ if __name__ == "__main__":
                         type=int,
                         default=128,
                         help="Stride when crop paches")
-    parser.add_argument('--noise', type=float,default=0.01, help="inputs noise")
     parser.add_argument("-n",
                         "--num-workers",
                         type=int,
@@ -343,8 +313,23 @@ if __name__ == "__main__":
                         help="Dataloaders threads (default: %(default)s)")
     parser.add_argument('--model',
                         type=str,
-                        default='cheng2020',
+                        default='NFC',
                         help='Model architecture')
+    parser.add_argument('--block', type=int,
+                        default=2,
+                        help="how many blocks in encoder")
+    parser.add_argument('--step', type=int,
+                        default=4,
+                        help="how many steps in flowblock")
+    parser.add_argument('--slice', type=int, default=8)
+    parser.add_argument('--flow_permutation', type=str,
+                        choices=['shuffle', 'invconv'],
+                        default='shuffle',
+                        help='channel shuffle')
+    parser.add_argument('--flow_coupling', type=str,
+                        choices=['additive', 'affine'],
+                        default='additive')
+    parser.add_argument('--LU_decomposed', type=bool, default=False)
     parser.add_argument('--channel_N', type=int, default=192)
     parser.add_argument('--channel_M', type=int, default=192)
     parser.add_argument('--epochs',
@@ -359,25 +344,21 @@ if __name__ == "__main__":
                         type=int,
                         default=4,
                         help='number of batch_size for testing')
-    parser.add_argument('-lr',
+    parser.add_argument('--lr',
                         type=float,
                         default=1e-4,
                         help='path to the folder with grayscale images')
     parser.add_argument("--aux_lr",
                         default=1e-3,
                         help="Auxiliary loss learning rate.")
-    parser.add_argument("--lmbda",
+    parser.add_argument("--alpha",
                         type=float,
                         default=1e-2,
                         help="Bit-rate distortion parameter")
     parser.add_argument("--beta",
                         type=float,
-                        default=0.1,
-                        help="sam loss parameter")
-    parser.add_argument("--alpha",
-                        type=float,
                         default=1e-2,
-                        help="deg loss parameter")                   
+                        help="sam loss parameter")
     parser.add_argument('--continue_training',
                         type=bool,
                         default=False,
