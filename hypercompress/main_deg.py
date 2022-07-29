@@ -20,7 +20,7 @@ from dataset_hsi import CAVE_Dataset
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
 from models.transformercompress import SymmetricalTransFormer
-from models.degradation import Degcompress
+from models.test.degradation import Degcompress
 
 try:
     from tensorboardX import SummaryWriter

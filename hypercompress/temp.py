@@ -9,7 +9,7 @@ from models.TransformerHyperCompress import ChannelTrans
 from models.transformercompress import SymmetricalTransFormer
 from models.cheng2020attention import Cheng2020Attention, Cheng2020channel
 from models.CA.hypercompress4 import HyperCompress4
-from models.degradation import Degcompress
+from models.test.degradation import Degcompress
 from models.NFC import NFC
 
 

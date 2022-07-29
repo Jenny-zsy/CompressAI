@@ -80,7 +80,7 @@ class SqueezeLayer(nn.Module):
         return x
 
 
-class ActNorm(nn.Module):
+'''class ActNorm(nn.Module):
     """
     Activation Normalization
     Initialize the bias and scale with a given minibatch,
@@ -100,9 +100,9 @@ class ActNorm(nn.Module):
         self.inited = False
 
     def initialize_parameters(self, input):
-        '''if not self.training:
+        if not self.training:
             raise ValueError("In Eval mode, but ActNorm not inited")
-'''
+
         with torch.no_grad():
             bias = torch.mean(input.clone(), dim=[0, 2, 3], keepdim=True)
             vars = torch.mean((input.clone() - bias)**2,
@@ -166,7 +166,56 @@ class ActNorm(nn.Module):
                 print(input)
                 print("here!  center inf")
                 exit()
-        return input, logdet
+        return input, logdet'''
+
+logabs = lambda x: torch.log(torch.abs(x))
+class ActNorm(nn.Module):
+    def __init__(self, in_channel):
+        super().__init__()
+
+        self.loc = nn.Parameter(torch.zeros(1, in_channel, 1, 1))
+        self.scale = nn.Parameter(torch.ones(1, in_channel, 1, 1))
+
+        self.register_buffer("initialized", torch.tensor(0, dtype=torch.uint8))
+
+    def initialize(self, input):
+        with torch.no_grad():
+            flatten = input.permute(1, 0, 2, 3).contiguous().view(input.shape[1], -1)
+            mean = (
+                flatten.mean(1)
+                .unsqueeze(1)
+                .unsqueeze(2)
+                .unsqueeze(3)
+                .permute(1, 0, 2, 3)
+            )
+            std = (
+                flatten.std(1)
+                .unsqueeze(1)
+                .unsqueeze(2)
+                .unsqueeze(3)
+                .permute(1, 0, 2, 3)
+            )
+
+            self.loc.data.copy_(-mean)
+            self.scale.data.copy_(1 / (std + 1e-6))
+
+    def forward(self, input, logdet=None, reverse=False):
+        if reverse:
+            return self.reverse(input)
+        _, _, height, width = input.shape
+
+        if self.initialized.item() == 0:
+            self.initialize(input)
+            self.initialized.fill_(1)
+ 
+        log_abs = logabs(self.scale)
+
+        logdet = height * width * torch.sum(log_abs)
+
+        return self.scale * (input + self.loc), logdet
+
+    def reverse(self, output):
+        return output / self.scale - self.loc
 
 
 class InvConv2d(nn.Module):
@@ -197,6 +246,7 @@ class InvConv2d(nn.Module):
         )
 
         return out, logdet
+
 
 
 class Invertible1x1Conv(nn.Conv2d):
@@ -535,14 +585,14 @@ class FlowStep(nn.Module):
         # Coupling
         x_a1 = x_a
         if self.flow_coupling == "additive":
-            x_b1 = x_b + self.net(x_a)
+            x_b1 = x_b - self.net(x_a)
         elif self.flow_coupling == "affine":
             h = self.net(x_a)
             shift, scale = split_feature(h, "cross")
             scale = torch.sigmoid(scale + 2.0)
             x_b1 = x_b + shift
             x_b1 = x_b1 * scale
-            logdet = torch.sum(torch.log(scale), dim=[1, 2, 3]) + logdet
+            logdet = torch.sum(logabs(scale), dim=[1, 2, 3]) + logdet
 
         #x_a1 = x_a + self.g1(x_b)
         '''if(torch.isinf(x_a1).sum()>0):
@@ -577,7 +627,7 @@ class FlowStep(nn.Module):
         # (x_a1.shape)
         x_a = x_a1
         if self.flow_coupling == "additive":
-            x_b = x_b1 - self.net(x_a1)
+            x_b = x_b1 + self.net(x_a1)
         elif self.flow_coupling == "affine":
             h = self.net(x_a1)
             shift, scale = split_feature(h, "cross")
@@ -594,7 +644,7 @@ class FlowStep(nn.Module):
         x, logdet = self.flow_permutation(x, logdet, True)
 
         # Actnorm
-        x, logdet = self.actnorm(x, logdet, True)
+        x = self.actnorm(x, logdet, True)
 
         return x
 
@@ -871,8 +921,18 @@ class NFC(nn.Module):
         _, y_likelihoods = self.gaussian(y, scales_hat, means=means_hat)
         #print("y_likelihoods:", y_likelihoods.shape)
 
-        return {
+        x_hat = self.encoder(y_hat, reverse=True)
+
+        '''return {
             "y_hat": y_hat,
+            "likelihoods": {
+                "y": y_likelihoods,
+                "z": z_likelihoods
+            },
+            "logdet": logdet
+        }'''
+        return {
+            "x_hat": x_hat,
             "likelihoods": {
                 "y": y_likelihoods,
                 "z": z_likelihoods

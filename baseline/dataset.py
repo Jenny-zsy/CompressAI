@@ -8,6 +8,7 @@ import torch
 from torchvision import transforms
 from PIL import Image
 from torch.utils.data import Dataset
+import torchvision.datasets as datasets
 
 
 class TestDataset(Dataset):
@@ -78,6 +79,56 @@ class ImageFolder(Dataset):
     def __len__(self):
         return len(self.samples)
 
+class Flickr(Dataset):
+    """Load an image folder database. Training and testing image samples
+    are respectively stored in separate directories:
+
+    .. code-block::
+
+        - rootdir/
+            - train/
+                - img000.png
+                - img001.png
+            - test/
+                - img000.png
+                - img001.png
+
+    Args:
+        root (string): root directory of the dataset
+        transform (callable, optional): a function or transform that takes in a
+            PIL image and returns a transformed version
+        split (string): split mode ('train' or 'val')
+    """
+
+    def __init__(self, root, patch_size, split="train"):
+        #splitdir = Path(root) / split
+        splitdir = Path(os.path.join(root,'{}/HR'.format(split)))
+
+        if not splitdir.is_dir():
+            raise RuntimeError(f'Invalid directory "{root}"')
+
+        self.samples = [f for f in splitdir.iterdir() if f.is_file()]
+        transform = transforms.Compose(
+        [transforms.RandomCrop(patch_size),
+         transforms.ToTensor()])
+        self.transform = transform
+
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            img: `PIL.Image.Image` or transformed `PIL.Image.Image`.
+        """
+        img = Image.open(self.samples[index]).convert("RGB")
+        if self.transform:
+            return self.transform(img)
+        return img
+
+    def __len__(self):
+        return len(self.samples)
+
 class CUB_data(Dataset):
 
 
@@ -102,7 +153,32 @@ class CUB_data(Dataset):
     def __len__(self):
         return len(self.datalist)
  
+class data_list(Dataset):
 
+
+    def __init__(self, root, patch_size, mode="train"):
+        self.root = root
+        f_dir = os.path.join('./data', '{}.txt'.format(mode))
+        f = open(f_dir, 'r')
+        self.datalist = f.readlines()
+        #self.samples = [f for f in splitdir.iterdir() if f.is_file()]
+
+        self.transform = transforms.Compose(
+        [transforms.RandomCrop(patch_size),
+         transforms.ToTensor()])
+
+    def __getitem__(self, index):
+        #print(self.datalist[index].split(' ')[0])
+        img_path = os.path.join(self.root, self.datalist[index].split(' ')[0])
+        img = Image.open(img_path).convert("RGB")
+        
+        if self.transform:
+            return self.transform(img)
+        return img
+
+    def __len__(self):
+        return len(self.datalist)
+ 
 
 from torch.utils.data import DataLoader
 

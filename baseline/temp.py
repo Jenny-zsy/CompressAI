@@ -78,8 +78,9 @@ if __name__ == "__main__":
     '''reconstructed_image = Image.fromarray(np.uint8(img+noise))
     reconstructed_image.save('temp.png')'''
     model = NFC(3)
-    x = torch.randn(1, 3, 128, 128)
+    print(model)
+    '''x = torch.randn(1, 3, 128, 128)
     out = model(x)
     y= out['x_hat']
 
-    print(y.shape)
+    print(y.shape)'''

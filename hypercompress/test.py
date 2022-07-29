@@ -18,7 +18,7 @@ from dataset_hsi import CAVE_Dataset
 from utils import AGWN_Batch, Spa_Downs, gasuss_noise_batch, gasuss_noise
 from models.ContextHyperprior import ContextHyperprior
 from models.cheng2020attention import Cheng2020Attention
-from models.degradation import Degcompress
+from models.test.degradation import Degcompress
 
 WS = [[7,1/2], [8,3], [9,2], [13,4], [15,1.5]]
 

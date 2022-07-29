@@ -82,8 +82,8 @@ def train_epoch(args, model, criterion, optimizer, aux_optimizer,
 
         # forward
         out = model(inputs)
-        with torch.no_grad():
-            out["x_hat"] = model.encoder(out["y_hat"], reverse=True)
+        '''with torch.no_grad():
+            out["x_hat"] = model.encoder(out["y_hat"], reverse=True)'''
         out_criterion = criterion(out, inputs)
 
         # backward
@@ -133,7 +133,7 @@ def test_epoch(args, model, criterion, test_dataloader, epoch, f):
         for inputs in test_dataloader:
             inputs = Variable(inputs.to(args.device))
             out = model(inputs)
-            out["x_hat"] = model.encoder(out["y_hat"], reverse=True)
+            #out["x_hat"] = model.encoder(out["y_hat"], reverse=True)
             out_criterion = criterion(out, inputs)
 
             bpp_loss.update(out_criterion["bpp_loss"])
@@ -175,6 +175,15 @@ def main(args):
         path = '/data3/zhaoshuyi/Datasets/CLIC2020/'
         train_dataset = ImageFolder(path, args.patch_size, split='train')
         valid_dataset = ImageFolder(path, args.patch_size, split='valid')
+    elif args.train_data == 'ImageNet':
+        path = '/data4/langzhiqiang/ImageNet_ILSVRC2012/train/'
+        #path = '/data3/zhaoshuyi/Datasets/ImageNet/train/'
+        train_dataset = data_list(path, args.patch_size, mode='train')
+        valid_dataset = data_list(path, args.patch_size, mode='valid')
+    elif args.train_data == 'Flickr':
+        path = '/data4/langzhiqiang/sr_data/Flickr1024/'
+        train_dataset = Flickr(path, args.patch_size, split='Train')
+        valid_dataset = Flickr(path, args.patch_size, split='Validation')
 
     # create data loader
     train_dataloader = DataLoader(
@@ -189,7 +198,7 @@ def main(args):
         num_workers=args.num_workers,
         shuffle=False,
     )
-    save_path = '../../compressresults/{}_{}alpha{}_beta{}_bs{}_ReduceLR{}_block{}_step{}_{}_{}/'.format(
+    save_path = '../../compressresults/{}_{}_alpha{}_beta{}_bs{}_ReduceLR{}_block{}_step{}_{}_{}/'.format(
         args.model, args.train_data,
         args.alpha, args.beta, args.batch_size * gpu_num, args.lr, args.block, args.step, args.flow_permutation, args.flow_coupling+args.LU_decomposed if args.flow_coupling == 'affine' else args.flow_coupling)
     model = NFC(block_num=args.block, step_num=args.step,patch_size=args.patch_size, flow_permutation=args.flow_permutation,
@@ -291,14 +300,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process some integers.')
     parser.add_argument('--train_data',
                         type=str,
-                        choices=['ImageNet', 'CLIC'],
+                        choices=['ImageNet', 'CLIC', 'Flickr'],
                         default='CLIC',
                         help='data for training')
     parser.add_argument('--aug',
                         type=str,
                         default='aug',
                         help='whether to augment data.')
-    parser.add_argument("--patch-size",
+    parser.add_argument("--patch_size",
                         type=int,
                         default=256,
                         help="Size of the patches to be cropped")
@@ -338,7 +347,7 @@ if __name__ == "__main__":
                         help='number of epoch for training')
     parser.add_argument('--batch_size',
                         type=int,
-                        default=16,
+                        default=8,
                         help='number of batch_size for training')
     parser.add_argument('--test_batch_size',
                         type=int,
@@ -357,7 +366,7 @@ if __name__ == "__main__":
                         help="Bit-rate distortion parameter")
     parser.add_argument("--beta",
                         type=float,
-                        default=1e-2,
+                        default=1,
                         help="sam loss parameter")
     parser.add_argument('--continue_training',
                         type=bool,
@@ -370,7 +379,7 @@ if __name__ == "__main__":
 
     parser.add_argument("--milestones",
                         type=list,
-                        default=[10],
+                        default=[5],
                         help="how many epoch to reduce the lr")
     parser.add_argument("--gamma",
                         type=int,

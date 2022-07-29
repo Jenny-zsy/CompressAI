@@ -17,6 +17,7 @@ class RateDistortionLoss(nn.Module):
     def __init__(self, lmbda=1e-2):
         super().__init__()
         self.mse = nn.MSELoss()
+        self.L1 = nn.L1Loss()
         self.lmbda = lmbda
 
     def forward(self, output, target):
@@ -39,6 +40,7 @@ class RateDistortion_Loss(nn.Module):
     def __init__(self, alpha=1e-2, beta=1e-2):
         super().__init__()
         self.mse = nn.MSELoss()
+        self.L1 = nn.L1Loss()
         self.alpha = alpha
         self.beta = beta
 
@@ -53,7 +55,7 @@ class RateDistortion_Loss(nn.Module):
         )
         out["logdet"] = output["logdet"].sum() / (-math.log(2) * num_pixels*3)
         out["mse_loss"] = self.mse(output["x_hat"], target)
-        out["loss"] =  255**2 * out["mse_loss"] + self.alpha *out["bpp_loss"] + self.beta*out["logdet"]
+        out["loss"] =  self.alpha*255**2*out["mse_loss"] +  out["bpp_loss"] + self.beta*out["logdet"]
 
         return out
 
